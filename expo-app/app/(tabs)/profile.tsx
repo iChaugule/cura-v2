@@ -5,6 +5,7 @@
  * profile, and the engagement. Changes flow straight into the AI context, so
  * fixing something here fixes every answer that follows.
  */
+import { CircleCode } from '../../src/components/CircleCode';
 import { useEffect, useMemo, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, Pressable, KeyboardAvoidingView, Platform, Alert,
@@ -405,18 +406,7 @@ export default function Profile() {
                   </View>
                 </View>
               ))}
-              {isFamily && state.joinCode ? (
-                <View style={s.codeBox}>
-                  <Text style={s.codeLabel}>Bring in another relative</Text>
-                  <Text style={s.code} selectable accessibilityLabel={`Circle code ${state.joinCode.split('').join(' ')}`}>
-                    {state.joinCode}
-                  </Text>
-                  <Text style={s.empty}>
-                    They choose &quot;Join their circle&quot; on the Cura welcome screen and type this code. They see
-                    everything you see, translated into their own language.
-                  </Text>
-                </View>
-              ) : null}
+              {state.joinCode && state.pnc ? <CircleCode code={state.joinCode} name={state.pnc.preferredName} /> : null}
             </Card>
           </>
         ) : null}

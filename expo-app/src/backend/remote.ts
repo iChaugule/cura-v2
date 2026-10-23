@@ -269,8 +269,8 @@ export async function createCircle(pnc: Pnc): Promise<{ id: string; joinCode: st
   return { id: row.id, joinCode: row.join_code };
 }
 
-export async function joinCircle(code: string) {
-  const { error } = await db().rpc('join_circle', { code });
+export async function joinCircle(code: string, role: 'family' | 'caregiver' = 'family') {
+  const { error } = await db().rpc('join_circle', { code, as_role: role });
   if (error) throw error;
 }
 

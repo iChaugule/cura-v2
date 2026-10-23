@@ -10,7 +10,7 @@ import { View, Text, StyleSheet, ScrollView, KeyboardAvoidingView, Platform } fr
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { ScreenHeader } from '../../src/components/ScreenHeader';
-import { Button, Chip, Field, Input } from '../../src/components/ui';
+import { Button, Chip, Field, Input, Segmented } from '../../src/components/ui';
 import { Colors, Spacing, Type } from '../../src/design/tokens';
 import { LANGUAGES } from '../../src/ai/cura';
 import { useApp } from '../../src/state/AppContext';
@@ -20,6 +20,7 @@ export default function JoinCircle() {
   const { joinWithCode } = useApp();
   const [code, setCode] = useState('');
   const [name, setName] = useState('');
+  const [who, setWho] = useState<'family' | 'caregiver'>('family');
   const [relationship, setRelationship] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -36,8 +37,8 @@ export default function JoinCircle() {
     try {
       await joinWithCode(
         {
-          id: '', role: 'family', name: name.trim(), email: email.trim(), phone: '',
-          language, relationship: relationship.trim() || 'Family',
+          id: '', role: who, name: name.trim(), email: email.trim(), phone: '',
+          language, relationship: who === 'family' ? relationship.trim() || 'Family' : undefined,
         },
         code,
         password,
@@ -55,11 +56,17 @@ export default function JoinCircle() {
       <ScreenHeader title="Join a care circle" onBack={() => router.back()} />
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={s.scroll} keyboardShouldPersistTaps="handled">
-          <Text style={s.lead}>Your family already uses Cura</Text>
+          <Text style={s.lead}>Join with a circle code</Text>
           <Text style={s.sub}>
-            Whoever set it up can find the 6-character code on their Info tab. Once you join you see the same
-            updates they do, wherever you live.
+            Whoever set up the circle can find the 6-character code on their Home screen. Relatives and
+            caregivers all join the same circle and see the same updates, wherever they live.
           </Text>
+          <Field label="I am joining as">
+            <Segmented
+              options={[{ value: 'family', label: 'Family member' }, { value: 'caregiver', label: 'Caregiver' }]}
+              value={who} onChange={setWho}
+            />
+          </Field>
           <Field label="Circle code" required>
             <Input
               value={code} onChangeText={t => setCode(t.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6))}
@@ -70,16 +77,18 @@ export default function JoinCircle() {
           <Field label="Your name" required>
             <Input value={name} onChangeText={setName} placeholder="Sunita Rao" autoCapitalize="words" />
           </Field>
-          <Field label="How you are related">
-            <Input value={relationship} onChangeText={setRelationship} placeholder="Daughter" autoCapitalize="words" />
-          </Field>
+          {who === 'family' ? (
+            <Field label="How you are related">
+              <Input value={relationship} onChangeText={setRelationship} placeholder="Daughter" autoCapitalize="words" />
+            </Field>
+          ) : null}
           <Field label="Email" required>
             <Input value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" placeholder="you@example.com" />
           </Field>
           <Field label="Password" hint="At least 6 characters." required>
             <Input value={password} onChangeText={setPassword} secureTextEntry autoCapitalize="none" />
           </Field>
-          <Field label="Language you want to read in" hint="Messages from the caregiver are translated into this.">
+          <Field label="Language you want to read in" hint="Messages from everyone else in the circle are translated into this.">
             <View style={s.chipWrap}>
               {LANGUAGES.slice(0, 10).map(l => (
                 <Chip key={l.code} label={l.native} selected={language === l.code} onPress={() => setLanguage(l.code)} />

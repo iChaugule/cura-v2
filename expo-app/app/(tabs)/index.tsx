@@ -19,6 +19,7 @@ import { useApp } from '../../src/state/AppContext';
 import { analyze } from '../../src/engine/patterns';
 import { FindingList, StatusLabel } from '../../src/components/Findings';
 import { DayStrip } from '../../src/components/DayStrip';
+import { CircleCode } from '../../src/components/CircleCode';
 
 export default function Home() {
   const { state, me, them, activeInvite, pendingInvites, refresh, clearSyncError } = useApp();
@@ -41,6 +42,7 @@ export default function Home() {
   const latestNote = state.notes[0];
   const caregiver = isFamily ? them : me;
   const family = state.members.filter(m => m.role === 'family');
+  const caregivers = state.members.filter(m => m.role === 'caregiver');
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -120,28 +122,38 @@ export default function Home() {
           {/* ── Who is looking after them ──────────────── */}
           <Section title="Care team" />
           <Card style={{ gap: 12 }}>
-            {caregiver ? (
-              <Person
-                name={caregiver.name}
-                meta={activeInvite ? activeInvite.scheduleSummary : 'Caregiver'}
-                tone={Colors.brown}
-                onMessage={() => router.push('/(tabs)/messages')}
-              />
+            {caregivers.length > 0 ? (
+              caregivers.map(c => (
+                <Person
+                  key={c.id}
+                  name={c.name}
+                  meta={activeInvite && c.id === caregiver?.id ? activeInvite.scheduleSummary : 'Caregiver'}
+                  tone={Colors.brown}
+                  onMessage={() => router.push('/(tabs)/messages')}
+                />
+              ))
             ) : (
               <>
-                <Text style={s.body}>No caregiver yet. Find one who works near {name}.</Text>
+                <Text style={s.body}>No caregiver yet. Find one who works near {name}, or give them the circle code below.</Text>
                 <Button label="Find care nearby" variant="secondary" size="sm" onPress={() => router.push('/(onboard)/find-care')} />
               </>
             )}
             {family.length > 1 ? (
               <Text style={s.meta}>
-                Also following: {family.filter(f => f.id !== me.id).map(f => f.name.split(' ')[0]).join(', ')}
+                Family in this circle: {family.map(f => f.id === me.id ? 'you' : f.name.split(' ')[0]).join(', ')}
               </Text>
             ) : null}
           </Card>
 
           <Section title="Latest note" action="All notes" onAction={() => router.push('/(tabs)/notes')} />
           <NoteCard note={latestNote} empty={`No notes yet. ${caregiver?.name.split(' ')[0] ?? 'The caregiver'} can add one after each visit.`} />
+
+          {state.joinCode ? (
+            <>
+              <Section title="Add to the circle" />
+              <Card><CircleCode code={state.joinCode} name={name} /></Card>
+            </>
+          ) : null}
         </>
       ) : (
         <>
@@ -193,18 +205,28 @@ export default function Home() {
           </Card>
 
           <Section title="Family" />
-          <Card>
-            {them ? (
-              <Person
-                name={them.name}
-                meta={`${them.relationship ?? 'Family'} of ${name}`}
-                tone={Colors.textStrong}
-                onMessage={() => router.push('/(tabs)/messages')}
-              />
+          <Card style={{ gap: 12 }}>
+            {family.length > 0 ? (
+              family.map(f => (
+                <Person
+                  key={f.id}
+                  name={f.name}
+                  meta={`${f.relationship ?? 'Family'} of ${name}`}
+                  tone={Colors.textStrong}
+                  onMessage={() => router.push('/(tabs)/messages')}
+                />
+              ))
             ) : (
               <Text style={s.body}>The family has not joined yet.</Text>
             )}
           </Card>
+
+          {state.joinCode ? (
+            <>
+              <Section title="Add to the circle" />
+              <Card><CircleCode code={state.joinCode} name={name} /></Card>
+            </>
+          ) : null}
         </>
       )}
 

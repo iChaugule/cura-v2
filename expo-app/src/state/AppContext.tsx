@@ -564,7 +564,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const joinWithCode = useCallback<AppApi['joinWithCode']>(async (account, code, password) => {
     await remote.signUp(account.email, password, account);
-    await remote.joinCircle(code);
+    await remote.joinCircle(code, account.role === 'caregiver' ? 'caregiver' : 'family');
     await loadFromServer();
   }, [loadFromServer]);
 

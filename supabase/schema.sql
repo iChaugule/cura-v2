@@ -200,15 +200,18 @@ begin
   return c;
 end $$;
 
--- A relative joins an existing circle with its code.
-create or replace function public.join_circle(code text)
+-- Anyone with the code can join: a relative, or a caregiver the family chose.
+-- Several relatives and several caregivers can share one circle.
+drop function if exists public.join_circle(text);
+create or replace function public.join_circle(code text, as_role text default 'family')
 returns public.circles language plpgsql security definer set search_path = public as $$
-declare c circles;
+declare c circles; r text;
 begin
   if auth.uid() is null then raise exception 'not signed in'; end if;
+  r := case when as_role = 'caregiver' then 'caregiver' else 'family' end;
   select * into c from circles where join_code = upper(trim(code));
   if c.id is null then raise exception 'No care circle has that code.'; end if;
-  insert into circle_members (circle_id, user_id, role) values (c.id, auth.uid(), 'family')
+  insert into circle_members (circle_id, user_id, role) values (c.id, auth.uid(), r)
     on conflict do nothing;
   return c;
 end $$;
@@ -253,7 +256,7 @@ create trigger invite_guard before update on public.invites
   for each row execute function public.guard_invite_update();
 
 grant execute on function public.create_circle(jsonb) to authenticated;
-grant execute on function public.join_circle(text) to authenticated;
+grant execute on function public.join_circle(text, text) to authenticated;
 
 -- ── Live updates ──────────────────────────────────────────
 
