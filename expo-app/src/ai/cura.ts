@@ -14,7 +14,7 @@ import type {
   AiSource, AiTurn, CareInvite, CareNote, ChatMessage, Pnc,
   QuizResponse, Role,
 } from '../models/types';
-import { QUIZ_QUESTIONS, scoreLabel } from '../data/quiz';
+import { QUIZ_QUESTIONS, observationLabel, redFlagLabel, scoreLabel } from '../data/quiz';
 import { analyze, TIER_LABEL } from '../engine/patterns';
 
 export interface CareContext {
@@ -82,7 +82,9 @@ function quizBlock(quizzes: QuizResponse[]): string {
         .filter(Boolean)
         .join('; ');
       const note = q.freeText ? ` Free note: "${q.freeText}"` : '';
-      return `- [${dt(q.submittedAt)}] by ${q.submittedByName}, wellbeing ${q.score}/100 (${scoreLabel(q.score)}). ${answers}.${note}`;
+      const flags = q.redFlags?.length ? ` SAFETY ITEMS: ${q.redFlags.map(redFlagLabel).join('; ')}.` : '';
+      const seen = q.observed?.length ? ` Also noticed: ${q.observed.map(observationLabel).join('; ')}.` : '';
+      return `- [${dt(q.submittedAt)}] by ${q.submittedByName}, wellbeing ${q.score}/100 (${scoreLabel(q.score)}). ${answers}.${flags}${seen}${note}`;
     })
     .join('\n');
 }

@@ -25,7 +25,7 @@
  * to. They never name a disease, a stage, or a medication change.
  */
 import type { QuizResponse } from '../models/types';
-import { QUIZ_QUESTIONS } from '../data/quiz';
+import { OBSERVATIONS, QUIZ_QUESTIONS, RED_FLAG_ITEMS } from '../data/quiz';
 
 const DAY = 24 * 3600_000;
 
@@ -45,7 +45,8 @@ const MIN_MAD = 0.5;
 const Z_THRESHOLD = 1.3;
 
 export type Metric =
-  | 'sleep' | 'water' | 'food' | 'mood' | 'mobility' | 'medication' | 'pain' | 'cognition';
+  | 'sleep' | 'water' | 'food' | 'mood' | 'mobility' | 'medication' | 'pain' | 'cognition'
+  | 'orientation' | 'selfcare' | 'engagement';
 
 export const METRIC_LABEL: Record<Metric, string> = {
   sleep: 'Sleep',
@@ -56,7 +57,18 @@ export const METRIC_LABEL: Record<Metric, string> = {
   medication: 'Medication',
   pain: 'Comfort',
   cognition: 'Alertness',
+  orientation: 'Orientation',
+  selfcare: 'Personal care',
+  engagement: 'Engagement',
 };
+
+/** Label for anything that can appear as evidence: a scored area, a safety item or an observation. */
+export function evidenceLabel(id: string): string {
+  return (METRIC_LABEL as Record<string, string>)[id]
+    ?? RED_FLAG_ITEMS.find(r => r.id === id)?.label
+    ?? OBSERVATIONS.find(o => o.id === id)?.label
+    ?? id;
+}
 
 export type Direction = 'improving' | 'steady' | 'declining';
 export type Tier = 'info' | 'monitor' | 'contact' | 'urgent';
@@ -72,8 +84,9 @@ export const TIER_LABEL: Record<Tier, string> = {
 export interface Evidence {
   checkInId: string;
   at: number;
-  metric: Metric;
-  /** Answer index, 0 (worst) to 3 (best). */
+  /** A scored area, a safety item id, or an observation id. */
+  metric: Metric | string;
+  /** Answer index, 0 (worst) to 3 (best); 1 for a yes/no item that was ticked. */
   value: number;
   /** The option text the caregiver picked. */
   answer: string;
@@ -101,7 +114,7 @@ export interface Finding {
   nextStep: string;
   confidence: Confidence;
   evidence: Evidence[];
-  metrics: Metric[];
+  metrics: (Metric | string)[];
 }
 
 export interface PatternReport {
@@ -235,6 +248,33 @@ const NEXT_STEP: Record<Metric, string> = {
   medication: 'Check the medication routine with the caregiver. Do not change doses without their doctor.',
   pain: 'Ask where it hurts and tell their doctor. Pain can be hard for them to describe.',
   cognition: 'A quick change in alertness is worth a call to their doctor, even if everything else looks normal.',
+  orientation: 'Keep the day predictable: same routine, a clock and calendar in view. Mention it to their doctor if it keeps up.',
+  selfcare: 'Ask the caregiver which steps have become hard. Breaking tasks into single steps often helps.',
+  engagement: 'Ask what they still enjoy and build it into the day. A steady withdrawal is worth raising with their doctor.',
+};
+
+/** What to do when a safety item is ticked. Always a person to call, never a treatment. */
+const SAFETY_STEP: Record<string, { title: string; nextStep: string }> = {
+  rf_confusion: {
+    title: 'Suddenly more confused',
+    nextStep: 'Call their doctor today. A sudden change in confusion often has a cause that can be treated, such as an infection or a new medicine.',
+  },
+  rf_swallow: {
+    title: 'Trouble swallowing at meals',
+    nextStep: 'Tell their doctor soon and ask about a swallowing check. Until then, sit them upright to eat and offer small mouthfuls.',
+  },
+  rf_fall: {
+    title: 'A fall or near fall',
+    nextStep: 'If they are hurt, dizzy, or hit their head, call emergency services. Otherwise tell their doctor, even if they seem fine.',
+  },
+  rf_drowsy: {
+    title: 'Very drowsy or hard to wake',
+    nextStep: 'If they cannot be woken properly or are breathing differently, call emergency services now. Otherwise call their doctor today.',
+  },
+  rf_refused: {
+    title: 'Refused almost all food or drink',
+    nextStep: 'Keep offering small sips and soft foods, and call their care team today. Not drinking can quickly cause other problems.',
+  },
 };
 
 /** Clusters: changes that matter more together than alone. */
@@ -330,6 +370,31 @@ export function analyze(checkIns: QuizResponse[], now = Date.now()): PatternRepo
     }
   }
 
+  // 1b. Safety items ticked in the check-in, from the last 48 hours.
+  for (const item of RED_FLAG_ITEMS) {
+    const hits = ordered.filter(c => c.redFlags?.includes(item.id) && now - c.submittedAt <= 2 * DAY);
+    if (!hits.length) continue;
+    const step = SAFETY_STEP[item.id];
+    findings.push({
+      id: `safety-${item.id}`,
+      tier: 'urgent',
+      title: step?.title ?? item.label,
+      detail: `${item.label}. Reported in the check-in on ${dayName(hits[hits.length - 1].submittedAt)}.`,
+      nextStep: step?.nextStep ?? 'Call their care team today.',
+      confidence: 'high',
+      evidence: hits.map(c => ({ checkInId: c.id, at: c.submittedAt, metric: item.id, value: 1, answer: 'Yes' })),
+      metrics: [item.id],
+    });
+  }
+  // A ticked safety item says the same as the matching worst answer; keep one.
+  const safetyIds = new Set(findings.filter(f => f.id.startsWith('safety-')).map(f => f.id));
+  for (const [rf, metric] of [['rf_fall', 'mobility'], ['rf_refused', 'water'], ['rf_drowsy', 'cognition']] as const) {
+    if (safetyIds.has(`safety-${rf}`)) {
+      const dup = findings.findIndex(f => f.id === `red-${metric}`);
+      if (dup >= 0) findings.splice(dup, 1);
+    }
+  }
+
   // 2. Clusters. These replace the single-area findings they are built from.
   const declining = new Set(trends.filter(t => t.direction === 'declining').map(t => t.metric));
   for (const c of CLUSTERS) {
@@ -368,6 +433,9 @@ export function analyze(checkIns: QuizResponse[], now = Date.now()): PatternRepo
     });
   }
 
+  // 4. Behaviours seen more often this week than before.
+  findings.push(...observationFindings(ordered, now));
+
   const order: Tier[] = ['urgent', 'contact', 'monitor', 'info'];
   findings.sort((a, b) => order.indexOf(a.tier) - order.indexOf(b.tier));
 
@@ -392,6 +460,57 @@ export function analyze(checkIns: QuizResponse[], now = Date.now()): PatternRepo
     findings,
     generatedAt: now,
   };
+}
+
+/**
+ * An observation that shows up on more days this week than it used to. "More"
+ * means at least 3 of the last 7 days AND at least twice the rate of the two
+ * weeks before. A behaviour never seen before that appears on 2 of the last 3
+ * days is flagged as new.
+ */
+function observationFindings(ordered: QuizResponse[], now: number): Finding[] {
+  const out: Finding[] = [];
+  const recent = ordered.filter(c => now - c.submittedAt <= 7 * DAY);
+  const before = ordered.filter(c => now - c.submittedAt > 7 * DAY && now - c.submittedAt <= 21 * DAY);
+  const last3 = ordered.filter(c => now - c.submittedAt <= 3 * DAY);
+  if (!recent.length) return out;
+  const enoughHistory = before.length >= MIN_BASELINE;
+
+  for (const o of OBSERVATIONS) {
+    const hitsRecent = recent.filter(c => c.observed?.includes(o.id));
+    const hitsBefore = before.filter(c => c.observed?.includes(o.id));
+    const rateRecent = hitsRecent.length / recent.length;
+    const rateBefore = before.length ? hitsBefore.length / before.length : 0;
+    const evidence = hitsRecent.map(c => ({ checkInId: c.id, at: c.submittedAt, metric: o.id, value: 1, answer: 'Seen' }));
+
+    if (enoughHistory && hitsRecent.length >= 3 && rateRecent >= 2 * Math.max(rateBefore, 0.05)) {
+      out.push({
+        id: `obs-${o.id}`,
+        tier: 'monitor',
+        title: `${o.short}, more often this week`,
+        detail: `${o.label}. Seen on ${hitsRecent.length} of the last ${recent.length} check-ins, compared with ${hitsBefore.length} of ${before.length} in the two weeks before.`,
+        nextStep: 'Mention it at their next doctor visit, along with when it tends to happen.',
+        confidence: before.length >= ESTABLISHED_BASELINE ? 'high' : 'moderate',
+        evidence,
+        metrics: [o.id],
+      });
+    } else if (enoughHistory && hitsBefore.length === 0) {
+      const new3 = last3.filter(c => c.observed?.includes(o.id));
+      if (new3.length >= 2) {
+        out.push({
+          id: `obs-new-${o.id}`,
+          tier: 'monitor',
+          title: `New this week: ${o.short.charAt(0).toLowerCase()}${o.short.slice(1)}`,
+          detail: `${o.label}. Seen on ${new3.length} of the last ${last3.length} check-ins and not at all in the two weeks before.`,
+          nextStep: 'Keep noting when it happens. If it continues, tell their doctor.',
+          confidence: 'moderate',
+          evidence,
+          metrics: [o.id],
+        });
+      }
+    }
+  }
+  return out;
 }
 
 // ── Words ───────────────────────────────────────────────────

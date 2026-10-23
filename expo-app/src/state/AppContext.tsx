@@ -410,7 +410,11 @@ export interface AppApi {
   addNote: (input: AddNoteInput) => CareNote;
   deleteNote: (id: string) => void;
   addComment: (noteId: string, body: string) => void;
-  submitQuiz: (answers: Record<string, number>, freeText: string) => QuizResponse;
+  submitQuiz: (
+    answers: Record<string, number>,
+    freeText: string,
+    extra?: { redFlags?: string[]; observed?: string[] },
+  ) => QuizResponse;
   setQuizInsight: (id: string, insight: string) => void;
   addMessage: (text: string) => ChatMessage;
   setTranslation: (id: string, lang: string, text: string, sourceLang?: string) => void;
@@ -674,7 +678,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (c) push(() => remote.addEntry(c, 'comment', comment.id, { ...comment, noteId }));
   }, [push]);
 
-  const submitQuiz = useCallback((answers: Record<string, number>, freeText: string): QuizResponse => {
+  const submitQuiz = useCallback<AppApi['submitQuiz']>((answers, freeText, extra) => {
     const a = author();
     const quiz: QuizResponse = {
       id: uid('quiz'),
@@ -684,6 +688,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       answers,
       freeText,
       score: computeScore(answers),
+      redFlags: extra?.redFlags ?? [],
+      observed: extra?.observed ?? [],
     };
     dispatch({ type: 'addQuiz', quiz });
     const c = live.current.circleId;

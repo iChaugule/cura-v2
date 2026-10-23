@@ -210,6 +210,7 @@ export function buildDemoSeed(): DemoSeed {
     answers: Record<string, number>,
     freeText = '',
     insight?: string,
+    observed: string[] = [],
   ): QuizResponse => ({
     id: `quiz-demo-${n}`,
     submittedAt: now - daysAgo * DAY - 3 * HOUR,
@@ -219,12 +220,17 @@ export function buildDemoSeed(): DemoSeed {
     freeText,
     score: computeScore(answers),
     aiInsight: insight,
+    redFlags: [],
+    observed,
   });
 
   // Three weeks of daily check-ins. The first 18 days are her normal (with the
   // small ups and downs real days have). In the last three, fluids and food
   // slip while walking improves, which is the story the notes tell too.
-  const usual = { sleep: 2, water: 2, food: 3, mood: 2, mobility: 2, medication: 3, pain: 2, cognition: 2 };
+  const usual = {
+    sleep: 2, water: 2, food: 3, mood: 2, mobility: 2, medication: 3, pain: 2, cognition: 2,
+    orientation: 2, selfcare: 2, engagement: 2,
+  };
   const wobble: Record<number, Partial<typeof usual>> = {
     20: { sleep: 3 }, 18: { mood: 3 }, 17: { food: 2 }, 15: { sleep: 1 }, 13: { water: 3 },
     12: { mood: 1 }, 10: { pain: 3 }, 9: { food: 2 }, 7: { sleep: 3, cognition: 3 }, 5: { mood: 3 }, 4: { sleep: 1, mood: 1 },
@@ -237,7 +243,11 @@ export function buildDemoSeed(): DemoSeed {
   const quizzes: QuizResponse[] = [];
   for (let d = 0; d <= 20; d++) {
     const answers = { ...usual, ...(wobble[d] ?? {}), ...(lastDays[d] ?? {}) };
-    quizzes.push(quiz(21 - d, d, answers));
+    // Evening restlessness: twice in the two weeks before, most days this week.
+    const observed: string[] = [];
+    if ([0, 1, 2, 4, 5].includes(d) || [12, 17].includes(d)) observed.push('sundowning');
+    if ([3, 9, 15].includes(d)) observed.push('repeat_questions');
+    quizzes.push(quiz(21 - d, d, answers, '', undefined, observed));
   }
 
   const msg = (

@@ -8,7 +8,7 @@
 import { useState } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { Colors, Radius, Spacing, Type } from '../design/tokens';
-import { METRIC_LABEL, TIER_LABEL, type Finding, type PatternReport, type Tier } from '../engine/patterns';
+import { evidenceLabel, TIER_LABEL, type Finding, type PatternReport, type Tier } from '../engine/patterns';
 import { Card } from './ui';
 
 export const TierColors: Record<Tier, { fg: string; bg: string }> = {
@@ -31,7 +31,7 @@ const CONFIDENCE_TEXT = {
   high: 'High confidence. Based on two weeks or more of history.',
 } as const;
 
-export function FindingList({ report, name }: { report: PatternReport; name: string }) {
+export function FindingList({ report, name, limit }: { report: PatternReport; name: string; limit?: number }) {
   if (report.status === 'not-enough-data') {
     return (
       <Card style={s.empty}>
@@ -57,13 +57,14 @@ export function FindingList({ report, name }: { report: PatternReport; name: str
   }
   return (
     <View style={{ gap: Spacing.sm }}>
-      {report.findings.map(f => <FindingCard key={f.id} finding={f} />)}
+      {report.findings.slice(0, limit ?? report.findings.length).map(f => <FindingCard key={f.id} finding={f} />)}
     </View>
   );
 }
 
 function FindingCard({ finding }: { finding: Finding }) {
-  const [open, setOpen] = useState(finding.tier === 'urgent');
+  // Collapsed: what it is and what to do. Open: why, with the check-ins behind it.
+  const [open, setOpen] = useState(false);
   const tone = TierColors[finding.tier];
   return (
     <Card style={s.card}>
@@ -72,28 +73,28 @@ function FindingCard({ finding }: { finding: Finding }) {
         accessibilityRole="button"
         accessibilityState={{ expanded: open }}
         accessibilityLabel={`${TIER_LABEL[finding.tier]}: ${finding.title}`}
-        accessibilityHint={open ? 'Hides the check-ins behind this' : 'Shows the check-ins behind this'}
+        accessibilityHint={open ? 'Hides the details' : 'Shows why and the check-ins behind this'}
         style={{ gap: 6 }}
       >
-        <Text style={[s.tier, { color: tone.fg }]}>{TIER_LABEL[finding.tier].toUpperCase()}</Text>
-        <Text style={s.title}>{finding.title}</Text>
-        <Text style={s.body}>{finding.detail}</Text>
-        <View style={[s.next, { backgroundColor: tone.bg }]}>
-          <Text style={[s.nextLabel, { color: tone.fg }]}>What to do</Text>
-          <Text style={s.nextText}>{finding.nextStep}</Text>
+        <View style={s.topRow}>
+          <View style={[s.dot, { backgroundColor: tone.fg }]} />
+          <Text style={[s.tier, { color: tone.fg }]}>{TIER_LABEL[finding.tier].toUpperCase()}</Text>
         </View>
-        <Text style={s.toggle}>{open ? 'Hide the check-ins behind this' : `Show the ${finding.evidence.length} check-in answers behind this`}</Text>
+        <Text style={s.title}>{finding.title}</Text>
+        <Text style={s.next} numberOfLines={open ? undefined : 2}>{finding.nextStep}</Text>
+        <Text style={s.toggle}>{open ? 'Hide details' : 'Why Cura says this'}</Text>
       </Pressable>
 
       {open ? (
         <View style={s.evidence}>
+          <Text style={s.body}>{finding.detail}</Text>
           {finding.evidence.map(e => (
             <View key={`${e.checkInId}-${e.metric}`} style={s.evRow}>
               <Text style={s.evDate}>
                 {new Date(e.at).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}
               </Text>
               <Text style={s.evText}>
-                <Text style={{ fontWeight: '700' }}>{METRIC_LABEL[e.metric]}:</Text>{' '}
+                <Text style={{ fontWeight: '700' }}>{evidenceLabel(e.metric)}:</Text>{' '}
                 {e.answer}
               </Text>
             </View>
@@ -107,10 +108,12 @@ function FindingCard({ finding }: { finding: Finding }) {
 
 const s = StyleSheet.create({
   card: { gap: 10 },
+  topRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  dot: { width: 7, height: 7, borderRadius: 4 },
   tier: { ...Type.overline, fontSize: 10 },
+  next: { ...Type.callout, fontWeight: '400', color: Colors.textStrong },
   title: { ...Type.subhead, color: Colors.textStrong },
   body: { ...Type.callout, fontWeight: '400', color: Colors.textPrimary },
-  next: { borderRadius: Radius.sm, padding: 10, gap: 2, marginTop: 2 },
   nextLabel: { ...Type.caption, fontWeight: '700' },
   nextText: { ...Type.callout, fontWeight: '400', color: Colors.textStrong },
   toggle: { ...Type.caption, color: Colors.brown, fontWeight: '700', paddingTop: 4 },

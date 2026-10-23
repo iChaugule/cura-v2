@@ -165,11 +165,19 @@ export interface QuizResponse {
   freeText: string;
   /** 0–100 wellbeing score derived from the answers. */
   score: number;
+  /** Safety items answered "yes" (ids from RED_FLAG_ITEMS). */
+  redFlags?: string[];
+  /** Specific behaviours seen today (ids from OBSERVATIONS). */
+  observed?: string[];
   aiInsight?: string;
 }
 
+export type CheckInSectionId = 'memory' | 'mood' | 'daily' | 'engagement';
+
 export interface QuizQuestion {
   id: string;
+  /** Which part of the check-in this belongs to. */
+  section: CheckInSectionId;
   icon: string;
   prompt: string;
   helper: string;
