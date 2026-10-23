@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <clipPath id="disc"><circle cx="512" cy="512" r="322"/></clipPath>
+  </defs>
+  <rect width="1024" height="1024" fill="#F2EBE1"/>
+  <circle cx="512" cy="512" r="352" fill="#FBF7F1" stroke="#6E3A26" stroke-width="16"/>
+  <g clip-path="url(#disc)">
+    <!-- sky: three flat bands -->
+    <rect x="150" y="150" width="724" height="724" fill="#F0C27E"/>
+    <path d="M150 480 C 260 430, 370 440, 480 478 S 700 505, 874 450 V 874 H 150 Z" fill="#E9A66B"/>
+    <path d="M150 600 C 280 556, 400 570, 520 606 S 740 616, 874 570 V 874 H 150 Z" fill="#DE8A5C"/>
+  </g>
+  <!-- neck and head drawn as one shape: brown outline layer, then cream -->
+  <g stroke-linecap="round" stroke-linejoin="round">
+    <path d="M430 720 C 330 620, 330 410, 430 352 C 510 306, 600 330, 612 412" fill="none" stroke="#6E3A26" stroke-width="88"/>
+    <ellipse cx="604" cy="428" rx="60" ry="51" fill="#6E3A26"/>
+    <path d="M430 720 C 330 620, 330 410, 430 352 C 510 306, 600 330, 612 412" fill="none" stroke="#FBF7F1" stroke-width="62"/>
+    <ellipse cx="604" cy="428" rx="47" ry="38" fill="#FBF7F1"/>
+  </g>
+  <g clip-path="url(#disc)">
+    <!-- swan body -->
+    <path d="M250 900 C 250 800, 300 720, 400 690 C 450 676, 470 700, 520 700
+             C 600 700, 690 650, 760 640 C 800 636, 812 660, 790 690 C 760 730, 790 760, 830 760 L 874 900 Z"
+          fill="#FBF7F1" stroke="#6E3A26" stroke-width="14" stroke-linejoin="round"/>
+  </g>
+  <!-- beak and closed eye -->
+  <path d="M642 440 L 700 498 L 670 506 L 630 470 Z" fill="#D9774A" stroke="#6E3A26" stroke-width="11" stroke-linejoin="round"/>
+  <path d="M586 418 q 14 12 28 0" fill="none" stroke="#6E3A26" stroke-width="9" stroke-linecap="round"/>
+  <!-- the wing: a crescent that opens to the right, so it reads as a C -->
+  <path d="M680 600
+           C 610 548, 470 560, 452 690
+           C 440 790, 560 850, 690 800
+           C 610 806, 520 770, 524 690
+           C 528 610, 620 586, 680 600 Z"
+        fill="#FBF7F1" stroke="#6E3A26" stroke-width="13" stroke-linejoin="round"/>
+  <!-- the heart it holds -->
+  <path d="M600 772 C 528 724, 524 670, 562 662 C 580 659, 594 670, 600 686 C 606 670, 620 659, 638 662 C 676 670, 672 724, 600 772 Z"
+        fill="#D9774A" stroke="#6E3A26" stroke-width="11" stroke-linejoin="round"/>
+</svg>

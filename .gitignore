@@ -1,0 +1,15 @@
+node_modules/
+.expo/
+dist/
+*.DS_Store
+*.xcuserstate
+xcuserdata/
+DerivedData/
+*.ipa
+*.dSYM.zip
+*.dSYM
+.env
+*.orig.*
+
+# Local tool settings
+.claude/

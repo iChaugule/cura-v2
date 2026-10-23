@@ -1,0 +1,35 @@
+{
+  "expo": {
+    "name": "Cura",
+    "slug": "cura",
+    "version": "1.0.0",
+    "scheme": "cura",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.cura.demo"
+    },
+    "android": {
+      "package": "com.cura.demo",
+      "adaptiveIcon": {
+        "backgroundColor": "#F2EBE1",
+        "foregroundImage": "./assets/adaptive-icon.png"
+      }
+    },
+    "plugins": [
+      "expo-router",
+      "expo-font",
+      "expo-status-bar"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "backgroundColor": "#F2EBE1",
+    "primaryColor": "#9A5337",
+    "icon": "./assets/icon.png",
+    "web": {
+      "favicon": "./assets/favicon.png"
+    }
+  }
+}
