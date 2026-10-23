@@ -22,7 +22,7 @@ import type {
 import type { Trend } from '../design/tokens';
 import { computeScore } from '../data/quiz';
 import { buildDemoSeed } from '../data/demoSeed';
-import { caregiverById, caregiversNear } from '../data/caregivers';
+import { caregiverById } from '../data/caregivers';
 import * as remote from '../backend/remote';
 
 const STORAGE_KEY = 'cura.state.v1';
@@ -577,9 +577,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const searchCaregivers = useCallback(async () => {
     const pnc = live.current.pnc;
     if (!pnc) return [];
-    const nearby = live.current.live
-      ? await remote.searchCaregivers(pnc.location)
-      : caregiversNear(pnc.location);
+    // Only real people: caregivers who signed up on Cura. Demo mode has none to
+    // search, so the screen shows real local providers instead.
+    const nearby = live.current.live ? await remote.searchCaregivers(pnc.location) : [];
     dispatch({ type: 'setNearby', nearby });
     return nearby;
   }, []);

@@ -64,7 +64,7 @@ export default function Welcome() {
 
         {sample ? (
           <View style={styles.preview} accessibilityLabel="Example of what a family sees">
-            <Text style={styles.previewCaption}>What a family saw this morning</Text>
+            <Text style={styles.previewCaption}>An example from the sample family in demo mode</Text>
             <View style={styles.previewCard}>
               <Text style={[styles.previewTier, { color: TierColors[sample.tier].fg }]}>
                 {TIER_LABEL[sample.tier].toUpperCase()}

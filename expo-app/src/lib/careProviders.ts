@@ -228,7 +228,7 @@ async function overpassSearch(origin: GeoPoint, radiusKm: number, signal?: Abort
   const body = `data=${encodeURIComponent(buildQuery(origin, Math.round(radiusKm * 1000)))}`;
   for (const url of ENDPOINTS) {
     const ctl = new AbortController();
-    const timer = setTimeout(() => ctl.abort(), 12_000);
+    const timer = setTimeout(() => ctl.abort(), 8_000);
     const stop = () => ctl.abort();
     signal?.addEventListener('abort', stop);
     try {

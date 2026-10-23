@@ -16,6 +16,8 @@ import { Avatar, Button, Chip, EmptyState, Pill } from '../../src/components/ui'
 import { Colors, Radius, Spacing, Type } from '../../src/design/tokens';
 import { ALL_SPECIALTIES } from '../../src/data/caregivers';
 import { Skeleton } from '../../src/components/Skeleton';
+import { LocalProviders } from '../../src/components/LocalProviders';
+import { KIND_LABEL, type CareProvider } from '../../src/lib/careProviders';
 import { friendlyDbError } from '../../src/backend/remote';
 import type { CaregiverProfile } from '../../src/models/types';
 import { formatDistance } from '../../src/lib/geo';
@@ -25,9 +27,21 @@ import { useApp } from '../../src/state/AppContext';
 type SortKey = 'distance' | 'rating' | 'price';
 
 export default function FindCare() {
-  const { state, searchCaregivers } = useApp();
+  const { state, searchCaregivers, addNote } = useApp();
   const pnc = state.pnc;
-  const isSample = !state.live;
+  const [providers, setProviders] = useState<CareProvider[]>([]);
+
+  const shareProvider = useCallback((p: CareProvider) => {
+    const lines = [
+      `${KIND_LABEL[p.kind]}, ${formatDistance(p.distanceKm)}.`,
+      p.address ? `Address: ${p.address}` : null,
+      p.phone ? `Phone: ${p.phone}` : null,
+      p.website ? `Website: ${p.website}` : null,
+      p.email ? `Email: ${p.email}` : null,
+      'Found on OpenStreetMap through Cura. Not yet contacted.',
+    ].filter(Boolean);
+    addNote({ category: 'general', trend: 'same', title: `Possible care provider: ${p.name}`, body: lines.join('\n') });
+  }, [addNote]);
 
   const [selected, setSelected] = useState<string | null>(null);
   const [specialty, setSpecialty] = useState<string | null>(null);
@@ -78,7 +92,7 @@ export default function FindCare() {
   return (
     <SafeAreaView style={s.safe} edges={['top']}>
       <ScreenHeader
-        title="Caregivers nearby"
+        title={`Care near ${pnc.preferredName}`}
         subtitle={pnc.address.split(',').slice(0, 2).join(', ')}
         step={3}
         totalSteps={4}
@@ -89,12 +103,20 @@ export default function FindCare() {
           <CareMap
             center={pnc.location}
             centerLabel={pnc.address}
-            pins={results.map(c => ({
-              id: c.id,
-              point: c.location,
-              label: `${c.name}, ${formatDistance(c.distanceKm ?? 0)}`,
-              initials: c.photoInitials,
-            }))}
+            pins={[
+              ...results.map(c => ({
+                id: c.id,
+                point: c.location,
+                label: `${c.name}, ${formatDistance(c.distanceKm ?? 0)}`,
+                initials: c.photoInitials,
+              })),
+              ...providers.slice(0, 25).map(p => ({
+                id: p.id,
+                point: p.location,
+                label: `${p.name}, ${formatDistance(p.distanceKm)}`,
+                initials: p.name.replace(/[^A-Za-z ]/g, '').split(' ').filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join(''),
+              })),
+            ]}
             selectedId={selected}
             onSelectPin={id => setSelected(id === selected ? null : id)}
             height={230}
@@ -107,12 +129,20 @@ export default function FindCare() {
             <View style={s.legendItem}>
               <View style={s.legendPin} />
               <Text style={s.legendText}>
-                {all === null ? 'Searching' : `${results.length} ${isSample ? 'sample ' : ''}caregiver${results.length === 1 ? '' : 's'}`}
+                {results.length ? `${results.length} on Cura, ` : ''}{providers.length} care provider{providers.length === 1 ? '' : 's'} nearby
               </Text>
             </View>
           </View>
         </View>
 
+        {state.live ? (
+        <>
+        <Text style={s.sectionTitle}>Caregivers on Cura</Text>
+        <Text style={s.sectionSub}>
+          People who signed up on Cura and travel to {pnc.preferredName}&apos;s area. Send a request and they answer on
+          their phone.
+        </Text>
+        {(all?.length ?? 0) > 1 ? (
         <View style={s.filters}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.filterRow}>
             <Chip
@@ -129,13 +159,9 @@ export default function FindCare() {
             )}
           </ScrollView>
         </View>
+        ) : null}
 
         <View style={s.list}>
-          {isSample ? (
-            <Text style={s.sampleNote}>
-              Demo mode: these are sample profiles placed near the address, not real people.
-            </Text>
-          ) : null}
           {all === null ? (
             [0, 1, 2].map(i => (
               <View key={i} style={[s.card, { flexDirection: 'row', gap: 12, alignItems: 'center' }]}>
@@ -156,13 +182,13 @@ export default function FindCare() {
               onAction={load}
             />
           ) : all.length === 0 ? (
-            <EmptyState
-              icon="search-outline"
-              title={`No caregivers near ${pnc.preferredName} yet`}
-              body={`Nobody who works within travelling distance of ${pnc.address.split(',').slice(0, 2).join(',')} has joined Cura so far. You can still set up the care profile and invite family. Check back here, or share Cura with a caregiver you trust and they will show up once they sign up.`}
-              action="Continue to Cura"
-              onAction={() => router.replace('/(tabs)')}
-            />
+            <View style={s.card}>
+              <Text style={s.name}>No one on Cura nearby yet</Text>
+              <Text style={s.bio}>
+                Nobody who works within travelling distance has joined Cura so far. The care providers below are real and
+                you can contact them today. A caregiver you trust can also download Cura and sign up, and they will appear here.
+              </Text>
+            </View>
           ) : results.length === 0 ? (
             <EmptyState
               icon="search-outline"
@@ -267,6 +293,21 @@ export default function FindCare() {
             })
           )}
         </View>
+        </>
+        ) : null}
+
+        <Text style={s.sectionTitle}>Care providers near {pnc.preferredName}</Text>
+        <Text style={s.sectionSub}>
+          Real home-care agencies, nursing homes and assisted living from OpenStreetMap. Call, email or get directions
+          right from here.
+        </Text>
+        <View style={s.list}>
+          <LocalProviders pnc={pnc} onShare={state.circleId || state.demoMode ? shareProvider : undefined} onResults={setProviders} />
+        </View>
+
+        <View style={[s.list, { marginTop: Spacing.lg }]}>
+          <Button label="Continue to Cura" variant="secondary" onPress={() => router.replace('/(tabs)')} />
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -327,6 +368,8 @@ const s = StyleSheet.create({
     backgroundColor: Colors.positiveSoft, paddingHorizontal: 8, paddingVertical: 4,
     borderRadius: Radius.pill,
   },
+  sectionTitle: { fontFamily: 'Fraunces_600SemiBold', fontSize: 19, color: Colors.textStrong, paddingHorizontal: Spacing.md, marginTop: Spacing.lg },
+  sectionSub: { ...Type.callout, fontWeight: '400', color: Colors.textSecondary, paddingHorizontal: Spacing.md, marginTop: 4, marginBottom: Spacing.sm },
   sampleNote: { ...Type.caption, color: Colors.textSecondary, fontWeight: '400', marginBottom: 2 },
   badgeText: { fontSize: 11, color: Colors.positive, fontWeight: '600' },
 });
