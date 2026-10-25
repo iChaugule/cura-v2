@@ -17,7 +17,7 @@ import React, {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type {
   Account, AiTurn, CareInvite, CareNote, CaregiverProfile, ChatMessage,
-  NoteCategory, Pnc, QuizResponse, Role, ScheduleItem, ScheduleKind, ScheduleLog,
+  NoteCategory, Pnc, QuizResponse, Role, ScheduleItem, ScheduleKind, ScheduleLog, DoseStatus,
 } from '../models/types';
 import type { Trend } from '../design/tokens';
 import { computeScore } from '../data/quiz';
@@ -468,6 +468,8 @@ export interface AppApi {
   deleteScheduleItem: (id: string) => void;
   /** Tick an item done for a date, or untick it. */
   toggleDose: (itemId: string, date?: string) => void;
+  /** Record how a dose or task went: done, refused or skipped, with an optional reason. */
+  logDose: (itemId: string, date: string, status: DoseStatus, note?: string) => void;
   /** A signed-in person (a caregiver, usually) joining a circle with its code. */
   joinCircleWithCode: (code: string, role: Role) => Promise<void>;
   setTranslation: (id: string, lang: string, text: string, sourceLang?: string) => void;
@@ -486,14 +488,7 @@ export interface SendInviteInput {
   paymentMethod: string;
 }
 
-export interface AddScheduleInput {
-  title: string;
-  kind: ScheduleKind;
-  time: string;
-  days: number[];
-  date?: string;
-  detail: string;
-}
+export type AddScheduleInput = Omit<ScheduleItem, 'id' | 'createdById' | 'createdByName' | 'createdAt'>;
 
 export interface AddNoteInput {
   category: NoteCategory;
@@ -815,6 +810,23 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     push(() => remote.deleteEntry(id));
   }, [push]);
 
+  const logDose = useCallback((itemId: string, date: string, status: DoseStatus, note?: string) => {
+    const s = live.current;
+    const id = logId(itemId, date);
+    const a = author();
+    const log: ScheduleLog = {
+      id, itemId, date, doneById: a?.id ?? 'unknown', doneByName: a?.name ?? 'Someone',
+      doneAt: Date.now(), status, ...(note?.trim() ? { note: note.trim() } : {}),
+    };
+    const existed = s.scheduleLog.some(l => l.id === id);
+    dispatch({ type: 'setDose', log, id });
+    const c = s.circleId;
+    if (c) push(async () => {
+      if (existed) await remote.deleteEntry(id);
+      await remote.addEntry(c, 'dose', id, log);
+    });
+  }, [push]);
+
   const toggleDose = useCallback((itemId: string, date: string = dateKey()) => {
     const s = live.current;
     const id = logId(itemId, date);
@@ -823,13 +835,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       push(() => remote.deleteEntry(id));
       return;
     }
-    const a = author();
-    const log: ScheduleLog = {
-      id, itemId, date, doneById: a?.id ?? 'unknown', doneByName: a?.name ?? 'Someone', doneAt: Date.now(),
-    };
-    dispatch({ type: 'setDose', log, id });
-    if (s.circleId) push(() => remote.addEntry(s.circleId as string, 'dose', id, log));
-  }, [push]);
+    logDose(itemId, date, 'done');
+  }, [push, logDose]);
 
   const joinCircleWithCode = useCallback(async (code: string, role: Role) => {
     await remote.joinCircle(code, role === 'caregiver' ? 'caregiver' : 'family');
@@ -901,7 +908,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     addMessage,
     addScheduleItem,
     deleteScheduleItem,
-    toggleDose,
+    toggleDose, logDose,
     joinCircleWithCode,
     setTranslation: (id, lang, text, sourceLang) =>
       dispatch({ type: 'setTranslation', id, lang, text, sourceLang }),
@@ -912,7 +919,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     state, me, them, activeInvite, pendingInvites, isOnboarded, reset, signUpFamily, signUpCaregiver,
     joinWithCode, signIn, refresh, searchCaregivers, updatePnc, sendInvite, respondToInvite, addNote,
     deleteNote, addComment, submitQuiz, setQuizInsight, addMessage, addScheduleItem, deleteScheduleItem,
-    toggleDose, joinCircleWithCode, push,
+    toggleDose, logDose, joinCircleWithCode, push,
   ]);
 
   return <Ctx.Provider value={api}>{children}</Ctx.Provider>;

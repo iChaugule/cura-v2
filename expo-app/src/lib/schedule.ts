@@ -2,7 +2,7 @@
  * Schedule helpers: which items fall on a date, whether they are done, and
  * how to say a time out loud.
  */
-import type { ScheduleItem, ScheduleKind, ScheduleLog } from '../models/types';
+import type { DoseStatus, FoodRule, ScheduleItem, ScheduleKind, ScheduleLog } from '../models/types';
 
 export const KIND_LABEL: Record<ScheduleKind, string> = {
   medication: 'Medicine',
@@ -40,6 +40,7 @@ export function timeLabel(time: string): string {
 /** Does this item happen on the given local date? */
 export function occursOn(item: ScheduleItem, date: string): boolean {
   if (item.date) return item.date === date;
+  if (item.endDate && date > item.endDate) return false;
   if (!item.days.length) return true;
   const [y, mo, d] = date.split('-').map(Number);
   return item.days.includes(new Date(y, mo - 1, d).getDay());
@@ -78,6 +79,64 @@ export function repeatLabel(item: ScheduleItem): string {
 /** How many of today's items are done, for a one-line summary. */
 export function progress(schedule: ScheduleItem[], log: ScheduleLog[], date: string) {
   const items = itemsOn(schedule, date);
-  const done = items.filter(i => logFor(log, i.id, date)).length;
+  const done = items.filter(i => statusOf(logFor(log, i.id, date))).length;
   return { total: items.length, done };
+}
+
+export const FOOD_LABEL: Record<FoodRule, string> = {
+  with: 'With food',
+  before: 'Before food',
+  after: 'After food',
+  empty: 'Empty stomach',
+  any: 'Any time',
+};
+
+export const STATUS_LABEL: Record<DoseStatus, string> = {
+  done: 'Done',
+  refused: 'Refused',
+  skipped: 'Skipped',
+};
+
+export const statusOf = (l?: ScheduleLog): DoseStatus | undefined => (l ? l.status ?? 'done' : undefined);
+
+/** "5 mg, after food" — the line that goes under a medicine's name. */
+export function medLine(item: ScheduleItem): string {
+  return [item.dose, item.food && item.food !== 'any' ? FOOD_LABEL[item.food].toLowerCase() : '']
+    .filter(Boolean).join(', ');
+}
+
+export interface Adherence {
+  due: number;
+  taken: number;
+  refused: number;
+  skipped: number;
+  missed: number;
+}
+
+/** How one repeating item went over the last `days` days (not counting today). */
+export function adherenceFor(item: ScheduleItem, log: ScheduleLog[], days = 7, now = new Date()): Adherence {
+  const r: Adherence = { due: 0, taken: 0, refused: 0, skipped: 0, missed: 0 };
+  for (let o = 1; o <= days; o++) {
+    const d = new Date(now); d.setDate(d.getDate() - o);
+    const k = dateKey(d);
+    if (!occursOn(item, k)) continue;
+    if (k < dateKey(item.createdAt)) continue; // did not exist yet
+    r.due++;
+    const st = statusOf(logFor(log, item.id, k));
+    if (st === 'done') r.taken++;
+    else if (st === 'refused') r.refused++;
+    else if (st === 'skipped') r.skipped++;
+    else r.missed++;
+  }
+  return r;
+}
+
+/** All medicines together, for the summary at the top of the schedule. */
+export function weekSummary(schedule: ScheduleItem[], log: ScheduleLog[], days = 7) {
+  const total: Adherence = { due: 0, taken: 0, refused: 0, skipped: 0, missed: 0 };
+  for (const i of schedule.filter(x => x.kind === 'medication' && !x.date)) {
+    const a = adherenceFor(i, log, days);
+    (Object.keys(total) as (keyof Adherence)[]).forEach(k => { total[k] += a[k]; });
+  }
+  return total;
 }

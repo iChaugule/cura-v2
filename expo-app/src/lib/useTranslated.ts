@@ -45,8 +45,12 @@ function translateOnce(text: string, target: string): Promise<string | null> {
   return p;
 }
 
-export function useTranslated(text: string, sourceLang: string | undefined, targetLang: string | undefined) {
-  const needs =
+export function useTranslated(
+  text: string, sourceLang: string | undefined, targetLang: string | undefined,
+  /** A translation we already have (a message's stored translation). Used before asking the API. */
+  known?: string,
+) {
+  const needs = !known &&
     !!text && !!targetLang && !!sourceLang && sourceLang !== targetLang &&
     !!GEMINI_API_KEY && !looksLikeNoise(text);
   const key = `${targetLang}|${text}`;
@@ -60,6 +64,9 @@ export function useTranslated(text: string, sourceLang: string | undefined, targ
     return () => { live = false; };
   }, [needs, key, text, targetLang]);
 
+  if (known && sourceLang && targetLang && sourceLang !== targetLang) {
+    return { text: known, translated: true, loading: false };
+  }
   const translated = needs && !!value;
   return { text: translated ? (value as string) : text, translated, loading: needs && value === undefined };
 }

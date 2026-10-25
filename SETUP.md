@@ -28,6 +28,14 @@ Cura has two modes:
    npx expo start
    ```
 
+   Then check the database is set up properly:
+
+   ```
+   node scripts/check-supabase.mjs
+   ```
+
+   It tells you which table or function is missing. If you updated Cura, run the whole of `supabase/schema.sql` again in the SQL Editor; it is safe to run more than once and adds the schedule and medicine-log permissions.
+
    Open it on two phones with Expo Go (or one phone plus the web version with `w`). Sign up as a caregiver on one and as a family member on the other.
 
 ## Trying the full flow

@@ -6,7 +6,7 @@
  * listed under the answer. Anything unrelated to this person's care is turned
  * away by the system prompt.
  */
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, FlatList, Pressable, TextInput,
   KeyboardAvoidingView, Platform, ScrollView, Linking,
@@ -21,13 +21,18 @@ import { friendlyError } from '../../src/ai/gemini';
 import { clockTime, initials, plainSpeech, possessive } from '../../src/lib/format';
 import { useSpeech } from '../../src/lib/useSpeech';
 import { useApp, useCareContext } from '../../src/state/AppContext';
+import { router, useLocalSearchParams } from 'expo-router';
+import { DAY_NAMES, timeLabel } from '../../src/lib/schedule';
+import type { ScheduleSuggestion } from '../../src/models/types';
 import { Skeleton } from '../../src/components/Skeleton';
 import type { AiTurn } from '../../src/models/types';
 
 const uid = () => `turn-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
 
 export default function CuraAI() {
-  const { state, me, setAiTurns } = useApp();
+  const { state, me, setAiTurns, addScheduleItem } = useApp();
+  const { q } = useLocalSearchParams<{ q?: string }>();
+  const [added, setAdded] = useState<Record<string, boolean>>({});
   const ctx = useCareContext();
   const role = state.activeRole;
   const emergency = emergencyNumber(state.pnc?.address).label;
@@ -61,7 +66,7 @@ export default function CuraAI() {
         ...next,
         {
           id: uid(), role: 'assistant', text: answer.text,
-          createdAt: Date.now(), sources: answer.sources,
+          createdAt: Date.now(), sources: answer.sources, suggestions: answer.suggestions,
         },
       ]);
     } catch (err) {
@@ -77,6 +82,16 @@ export default function CuraAI() {
 
   const clear = () => setAiTurns(role, []);
 
+  // Arriving with a question (e.g. from the schedule's "Ask Cura") asks it once.
+  const asked = useRef<string | null>(null);
+  useEffect(() => {
+    if (q && asked.current !== q) {
+      asked.current = q;
+      send(q);
+      router.setParams({ q: '' });
+    }
+  }, [q, send]);
+
   return (
     <View style={s.screen}>
       {/* Header */}
@@ -87,7 +102,7 @@ export default function CuraAI() {
         <View style={{ flex: 1 }}>
           <Text style={s.headerTitle}>Ask Cura</Text>
           <Text style={s.headerSub}>
-            Knows {possessive(state.pnc?.preferredName ?? '')} notes, check-ins and messages
+            Knows {possessive(state.pnc?.preferredName ?? '')} notes, check-ins, messages and schedule
           </Text>
         </View>
         {turns.length ? (
@@ -133,6 +148,11 @@ export default function CuraAI() {
               myInitials={initials(me?.name ?? 'You')}
               speaking={speakingId === item.id}
               onSpeak={() => toggle(item.id, plainSpeech(item.text), me?.language ?? 'en')}
+              added={added}
+              onAdd={(sug, key) => {
+                addScheduleItem({ ...sug, days: sug.days });
+                setAdded(a => ({ ...a, [key]: true }));
+              }}
             />
           )}
         />
@@ -193,8 +213,8 @@ function Intro({ name, role }: { name: string; role: 'family' | 'caregiver' }) {
       <Text style={s.introTitle}>Ask about {name}&apos;s care</Text>
       <Text style={s.introBody}>
         {role === 'family'
-          ? `I read every note, check-in and message about ${name}. Ask what changed, what it might mean, or what to raise with their doctor.`
-          : `I have ${name}'s full record: notes, check-ins and what the family has said. Ask about technique, warning signs, or what to write today.`}
+          ? `I read every note, check-in, message and the daily schedule for ${name}. Ask what changed, what it might mean, or what to raise with their doctor.`
+          : `I have ${name}'s full record: notes, check-ins, the schedule and what the family has said. Ask about technique, warning signs, or what to write today.`}
       </Text>
       <View style={s.introNote}>
         <Text style={s.introNoteText}>
@@ -207,12 +227,14 @@ function Intro({ name, role }: { name: string; role: 'family' | 'caregiver' }) {
 }
 
 function Turn({
-  turn, myInitials, speaking, onSpeak,
+  turn, myInitials, speaking, onSpeak, added, onAdd,
 }: {
   turn: AiTurn;
   myInitials: string;
   speaking: boolean;
   onSpeak: () => void;
+  added: Record<string, boolean>;
+  onAdd: (s: ScheduleSuggestion, key: string) => void;
 }) {
   const isAi = turn.role === 'assistant';
 
@@ -235,6 +257,29 @@ function Turn({
       </View>
       <View style={[s.bubble, s.bubbleAi, turn.error && s.bubbleError]}>
         <RichText style={turn.error ? { color: Colors.urgent } : undefined}>{turn.text}</RichText>
+
+        {turn.suggestions?.map((sug, i) => {
+          const key = `${turn.id}:${i}`;
+          const done = added[key];
+          return (
+            <View key={key} style={s.suggest}>
+              <Text style={s.sourcesLabel}>SUGGESTED FOR THE SCHEDULE</Text>
+              <Text style={s.sugTitle}>{sug.title}</Text>
+              <Text style={s.sugMeta}>
+                {timeLabel(sug.time)}, {sug.days.length ? sug.days.map(d => DAY_NAMES[d]).join(', ') : 'every day'}
+              </Text>
+              {sug.detail ? <Text style={s.sugMeta}>{sug.detail}</Text> : null}
+              <Pressable
+                disabled={done}
+                onPress={() => onAdd(sug, key)}
+                accessibilityRole="button"
+                style={({ pressed }) => [s.sugBtn, done && { opacity: 0.5 }, pressed && { opacity: 0.8 }]}
+              >
+                <Text style={s.sugBtnText}>{done ? 'Added to the schedule' : 'Add to the schedule'}</Text>
+              </Pressable>
+            </View>
+          );
+        })}
 
         {turn.sources?.length ? (
           <View style={s.sources}>
@@ -323,6 +368,14 @@ const s = StyleSheet.create({
   sourceRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   sourceText: { fontSize: 11.5, color: Colors.info, flex: 1, textDecorationLine: 'underline' },
 
+  suggest: {
+    gap: 4, backgroundColor: Colors.bgSunken, padding: 10, borderRadius: Radius.sm,
+    borderWidth: StyleSheet.hairlineWidth, borderColor: Colors.separator,
+  },
+  sugTitle: { fontSize: 15, fontWeight: '700', color: Colors.textStrong },
+  sugMeta: { ...Type.caption, color: Colors.textSecondary, fontWeight: '400' },
+  sugBtn: { alignSelf: 'flex-start', marginTop: 6, backgroundColor: Colors.brown, borderRadius: Radius.md, paddingHorizontal: 14, paddingVertical: 8 },
+  sugBtnText: { fontSize: 13, fontWeight: '700', color: Colors.textOnBrown },
   typingRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 7 },
   typingBubble: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   typingText: { ...Type.callout, color: Colors.textSecondary, fontWeight: '400' },

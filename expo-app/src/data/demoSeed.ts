@@ -36,15 +36,27 @@ export function buildDemoSchedule(pnc: Pnc, family: Account | null, caregiver: A
   const inThree = dateKey(Date.now() + 3 * DAY);
   const schedule: ScheduleItem[] = [
     mk('Chai and a glass of water', 'meal', '07:00', 'Cardamom chai. Offer a full glass of water with it.'),
-    mk('Amlodipine 5 mg', 'medication', '08:30', 'Once daily, after breakfast.'),
-    mk('Walk in the corridor', 'activity', '09:30', '10 to 15 minutes before it gets hot. Hand on her elbow.'),
-    mk('Coconut water', 'meal', '11:00', 'Small glass. Offer again every half hour through the afternoon.'),
-    mk('Calcium and Vitamin D3', 'medication', '13:30', '1 tablet, after lunch.'),
+    mk('Amlodipine', 'medication', '08:30', 'Give with a few sips of water. Check she swallows it.', {
+      dose: '5 mg', food: 'after', purpose: 'Blood pressure', prescriber: 'Dr. Kulkarni', important: true,
+    }),
+    mk('Walk in the corridor', 'activity', '09:30', '10 to 15 minutes before it gets hot. Hand on her elbow.', {
+      place: 'Corridor outside the flat',
+      steps: ['Slippers with grip, not sandals', 'Hand on her elbow, let her set the pace', 'Water when you are back'],
+    }),
+    mk('Coconut water', 'meal', '11:00', 'Small glass. Offer again every half hour through the afternoon.', { purpose: 'Fluids' }),
+    mk('Calcium and Vitamin D3', 'medication', '13:30', 'Not with the blood pressure tablet.', {
+      dose: '1 tablet', food: 'after', purpose: 'Bones', prescriber: 'Dr. Kulkarni',
+    }),
     mk('Lights on, curtains closed', 'activity', '16:00', 'Before dusk, to ease the evening restlessness.'),
     mk('Chai and the photo album', 'activity', '17:00', 'Sit beside her. This settles her best.'),
     mk('Evening prayer', 'activity', '19:00', 'Marathi bhajans, low volume.'),
-    mk('Donepezil 5 mg', 'medication', '21:00', 'Once daily, at bedtime.'),
-    mk('Doctor visit: blood pressure review', 'appointment', '11:30', 'Bring the last week of check-ins.', { days: [], date: inThree }),
+    mk('Donepezil', 'medication', '21:00', 'Give at bedtime. If she is drowsy, give it and let her sleep.', {
+      dose: '5 mg', food: 'any', purpose: 'Memory and thinking', prescriber: 'Dr. Kulkarni', important: true,
+      steps: ['Tablet with water', 'Brush teeth', 'Night light on', 'Bedroom door open'],
+    }),
+    mk('Doctor visit: blood pressure review', 'appointment', '11:30', 'Bring the last week of check-ins.', {
+      days: [], date: inThree, prescriber: 'Dr. Kulkarni', place: 'Sahyadri Clinic, Kothrud',
+    }),
   ];
   // Everything that was due earlier today is already ticked off by the caregiver.
   const now = new Date();
@@ -57,6 +69,20 @@ export function buildDemoSchedule(pnc: Pnc, family: Account | null, caregiver: A
       doneById: caregiver?.id ?? 'demo', doneByName: caregiver?.name ?? 'Caregiver',
       doneAt: now.getTime() - 10 * 60_000,
     }));
+  // The week before, so the pattern is visible: Amlodipine missed once, Donepezil refused once.
+  for (let o = 1; o <= 7; o++) {
+    const day = dateKey(Date.now() - o * DAY);
+    schedule.filter(i => !i.date && (i.kind === 'medication')).forEach(i => {
+      if (o === 3 && i.title === 'Amlodipine') return; // missed
+      const refused = o === 2 && i.title === 'Donepezil';
+      log.push({
+        id: logId(i.id, day), itemId: i.id, date: day,
+        doneById: caregiver?.id ?? 'demo', doneByName: caregiver?.name ?? 'Caregiver',
+        doneAt: new Date(`${day}T${i.time}:00`).getTime() + 8 * 60_000,
+        ...(refused ? { status: 'refused' as const, note: 'Pushed it away, said she was full. Tried again after ten minutes, same.' } : {}),
+      });
+    });
+  }
   return { schedule, log };
 }
 

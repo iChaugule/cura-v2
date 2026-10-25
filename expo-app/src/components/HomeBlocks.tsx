@@ -16,13 +16,13 @@ import { useApp } from '../state/AppContext';
 
 /** Text shown in the reader's language, with a small note when it was translated. */
 export function TranslatedText({
-  text, sourceLang, targetLang, style, numberOfLines, noteStyle,
+  text, sourceLang, targetLang, style, numberOfLines, noteStyle, known,
 }: {
-  text: string; sourceLang?: string; targetLang?: string;
+  text: string; sourceLang?: string; targetLang?: string; known?: string;
   style?: StyleProp<TextStyle>; numberOfLines?: number; noteStyle?: StyleProp<TextStyle>;
 }) {
   const [original, setOriginal] = useState(false);
-  const t = useTranslated(text, sourceLang, targetLang);
+  const t = useTranslated(text, sourceLang, targetLang, known);
   return (
     <View style={{ gap: 3 }}>
       <Text style={style} numberOfLines={numberOfLines}>{original ? text : t.text}</Text>
@@ -131,6 +131,7 @@ export function RecentMessages() {
                 </Text>
                 <TranslatedText
                   text={m.text} sourceLang={mine ? myLang : m.sourceLang} targetLang={myLang}
+                  known={mine ? undefined : m.translations[myLang]}
                   style={s.body} numberOfLines={2}
                 />
               </View>

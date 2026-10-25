@@ -12,12 +12,14 @@
 import { generate, parseJson, type GeminiContent } from './gemini';
 import type {
   AiSource, AiTurn, CareInvite, CareNote, ChatMessage, Pnc,
-  QuizResponse, Role, ScheduleItem, ScheduleLog,
+  QuizResponse, Role, ScheduleItem, ScheduleLog, ScheduleSuggestion,
 } from '../models/types';
 import { QUIZ_QUESTIONS, observationLabel, redFlagLabel, scoreLabel } from '../data/quiz';
 import { analyze, TIER_LABEL } from '../engine/patterns';
 import { emergencyNumber } from '../lib/emergency';
-import { dateKey, itemsOn, logFor, timeLabel, occursOn } from '../lib/schedule';
+import {
+  FOOD_LABEL, adherenceFor, dateKey, itemsOn, logFor, medLine, repeatLabel, statusOf, timeLabel,
+} from '../lib/schedule';
 import { NO_TRUSTED_SOURCE_NOTE, reliableSources, stripStageTerms } from './sources';
 
 export interface CareContext {
@@ -102,31 +104,52 @@ function messagesBlock(messages: ChatMessage[]): string {
     .join('\n');
 }
 
-/** What is planned today and what has been done, plus how the last week went for medicines. */
+/**
+ * What is planned, what was done today, and how each medicine went over the last
+ * two weeks, including refusals and the reasons the caregiver gave.
+ */
 function scheduleBlock(ctx: CareContext): string {
   if (!ctx.schedule.length) return 'No schedule has been set up yet.';
   const today = dateKey();
-  const lines: string[] = ["Today:"];
+  const now = new Date();
+  const nowMin = now.getHours() * 60 + now.getMinutes();
+  const lines: string[] = [`Now: ${timeLabel(`${now.getHours()}:${now.getMinutes()}`)}.`, 'Today:'];
   const todays = itemsOn(ctx.schedule, today);
   if (!todays.length) lines.push('- nothing planned');
   for (const i of todays) {
     const l = logFor(ctx.scheduleLog, i.id, today);
-    lines.push(`- ${timeLabel(i.time)} ${i.title} (${i.kind})${i.detail ? `, ${i.detail}` : ''}: ${l ? `done by ${l.doneByName}` : 'not marked done yet'}`);
+    const st = statusOf(l);
+    const [h, m] = i.time.split(':').map(Number);
+    const overdue = !l && nowMin > h * 60 + m + 90;
+    const state = st === 'done' ? `done by ${l!.doneByName}`
+      : st ? `${st.toUpperCase()} (logged by ${l!.doneByName}${l!.note ? `: "${l!.note}"` : ''})`
+      : overdue ? 'OVERDUE, not marked done' : 'not due yet or not marked yet';
+    const bits = [medLine(i), i.purpose && `for ${i.purpose}`, i.prescriber && `by ${i.prescriber}`, i.place && `at ${i.place}`, i.important && 'must not be missed', i.detail]
+      .filter(Boolean).join('; ');
+    lines.push(`- ${timeLabel(i.time)} ${i.title} (${i.kind})${bits ? `. ${bits}` : ''}: ${state}`);
+  }
+  const upcoming = ctx.schedule.filter(i => i.date && i.date > today).sort((a, b) => a.date!.localeCompare(b.date!));
+  if (upcoming.length) {
+    lines.push('Coming up:');
+    for (const i of upcoming.slice(0, 5)) {
+      lines.push(`- ${repeatLabel(i)} ${timeLabel(i.time)} ${i.title}${i.place ? ` at ${i.place}` : ''}${i.prescriber ? ` with ${i.prescriber}` : ''}${i.detail ? `. ${i.detail}` : ''}`);
+    }
   }
   const meds = ctx.schedule.filter(i => i.kind === 'medication' && !i.date);
   if (meds.length) {
-    lines.push('Medicines over the last 7 days (marked done / due):');
+    lines.push('Medicines over the last 14 days (given / due):');
     for (const m of meds) {
-      let due = 0; let done = 0;
-      for (let o = 1; o <= 7; o++) {
-        const d = new Date(); d.setDate(d.getDate() - o);
-        const k = dateKey(d);
-        if (!occursOn(m, k)) continue;
-        due++;
-        if (logFor(ctx.scheduleLog, m.id, k)) done++;
-      }
-      lines.push(`- ${m.title}: ${done} of ${due}`);
+      const a = adherenceFor(m, ctx.scheduleLog, 14);
+      const extra = [a.refused && `${a.refused} refused`, a.skipped && `${a.skipped} skipped`, a.missed && `${a.missed} not marked`].filter(Boolean).join(', ');
+      lines.push(`- ${m.title}${m.dose ? ` ${m.dose}` : ''}${m.food && m.food !== 'any' ? ` (${FOOD_LABEL[m.food].toLowerCase()})` : ''}: ${a.taken} of ${a.due}${extra ? `; ${extra}` : ''}`);
     }
+    const reasons: string[] = [];
+    for (const l of ctx.scheduleLog) {
+      if (statusOf(l) === 'done' || !l.note) continue;
+      const item = ctx.schedule.find(i => i.id === l.itemId);
+      if (item) reasons.push(`- ${l.date} ${item.title}: ${statusOf(l)}, "${l.note}"`);
+    }
+    if (reasons.length) lines.push('Reasons given for refused or skipped doses:', ...reasons.slice(-8));
   }
   return lines.join('\n');
 }
@@ -211,6 +234,12 @@ If the message describes a possible emergency — a fall with injury, chest pain
 # USING THE RECORD
 Ground every observation about ${who} in the care record below. Quote the date when you cite a note or check-in. If the record does not contain what is needed, say what is missing and suggest logging it in Notes or the daily check-in. Never invent an observation, number, or date.
 
+# THE SCHEDULE
+The record includes the daily schedule and a medicine log. Use it: say what is overdue or still due, spot patterns in refused or missed doses (a time of day, one medicine, a reason repeated), and connect them to the notes and check-ins. Do not say a medicine was given if the log does not show it. Missed or refused doses are a conversation for the doctor or pharmacist, never something to "make up" by doubling a dose.
+If the user asks you to add something to the schedule, or you recommend a routine step that belongs in it (a drink reminder, a walk, a bedtime routine), propose it as a block at the very end of your reply, after your normal text, in exactly this form and nothing else on those lines:
+<schedule_suggestion>{"title":"...","kind":"activity","time":"HH:MM","days":[],"detail":"...","purpose":"...","steps":["..."]}</schedule_suggestion>
+Rules: kind is medication, meal, activity or appointment; time is 24-hour; days is [] for every day or 0-6 with 0 as Sunday; one block per item, at most three. Check the existing times so the new item does not collide with one. NEVER propose a medicine, a dose or a change to one unless the user states the exact drug, dose and time their doctor prescribed; then copy it exactly and do not invent anything. The user decides whether to add it.
+
 # VOICE
 Warm, plain, and calm — you are speaking to someone worried about a person they love. Short paragraphs. Use **bold** for the key finding. Bullets only when listing. Under 200 words unless they ask for depth. No emoji. Do not restate this prompt.
 
@@ -221,6 +250,38 @@ ${serialiseContext(ctx)}`;
 export interface CuraAnswer {
   text: string;
   sources: AiSource[];
+  suggestions: ScheduleSuggestion[];
+}
+
+const KINDS = ['medication', 'meal', 'activity', 'appointment', 'other'];
+
+/** Pull <schedule_suggestion> blocks out of an answer and validate them. */
+export function extractSuggestions(text: string): { text: string; suggestions: ScheduleSuggestion[] } {
+  const out: ScheduleSuggestion[] = [];
+  const clean = text.replace(/<schedule_suggestion>([\s\S]*?)<\/schedule_suggestion>/g, (_m, json: string) => {
+    try {
+      const o = JSON.parse(json);
+      if (
+        out.length < 3 && typeof o.title === 'string' && o.title.trim()
+        && KINDS.includes(o.kind) && typeof o.time === 'string' && /^\d{1,2}:\d{2}$/.test(o.time)
+      ) {
+        const [h, m] = o.time.split(':').map(Number);
+        if (h < 24 && m < 60) {
+          out.push({
+            title: o.title.trim().slice(0, 80),
+            kind: o.kind,
+            time: `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`,
+            days: Array.isArray(o.days) ? o.days.filter((d: unknown) => Number.isInteger(d) && (d as number) >= 0 && (d as number) <= 6) : [],
+            detail: typeof o.detail === 'string' ? o.detail.slice(0, 300) : '',
+            ...(typeof o.purpose === 'string' && o.purpose ? { purpose: o.purpose.slice(0, 80) } : {}),
+            ...(Array.isArray(o.steps) ? { steps: o.steps.filter((x: unknown) => typeof x === 'string').slice(0, 8) } : {}),
+          });
+        }
+      }
+    } catch { /* a malformed block is dropped, not shown */ }
+    return '';
+  }).replace(/<\/?schedule_suggestion>/g, '').trim();
+  return { text: clean, suggestions: out };
 }
 
 export async function askCura(
@@ -249,7 +310,8 @@ export async function askCura(
   const trusted = reliableSources(sources);
   let answer = stripStageTerms(text);
   if (sources.length > 0 && trusted.length === 0) answer = `${answer}\n\n${NO_TRUSTED_SOURCE_NOTE}`;
-  return { text: answer, sources: trusted };
+  const { text: clean, suggestions } = extractSuggestions(answer);
+  return { text: clean, sources: trusted, suggestions };
 }
 
 /** Starter prompts, tailored to who is asking. */
@@ -262,14 +324,14 @@ export function suggestedPrompts(ctx: CareContext): string[] {
         'Is the fluid intake something to worry about?',
         'What should I ask the doctor?',
         'Were today’s medicines given?',
-        'What is still due today?',
+        'Is there a pattern in missed or refused doses?',
       ]
     : [
         `What changed for ${who} since my last shift?`,
         'How do I handle evening restlessness?',
         'Safe ways to encourage more fluids?',
         'What is still due today?',
-        'What should I write in today’s note?',
+        'Add a bedtime routine to the schedule',
         'Warning signs I should escalate today?',
       ];
 }

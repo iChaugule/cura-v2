@@ -84,13 +84,18 @@ export default function FamilySignup() {
   const [medName, setMedName] = useState('');
   const [medDose, setMedDose] = useState('');
   const [medTime, setMedTime] = useState('08:00');
-  const addMed = () => {
-    if (!medName.trim()) return;
+  const typedMed = (): (Medication & { time: string }) | null => {
+    if (!medName.trim()) return null;
     const when = DOSE_TIMES.find(t => t.value === medTime)?.label.toLowerCase() ?? 'daily';
-    setMeds([...meds, {
+    return {
       id: `med-${Date.now().toString(36)}`, name: medName.trim(), dose: medDose.trim(),
       schedule: `Once daily, ${when}`, time: medTime,
-    }]);
+    };
+  };
+  const addMed = () => {
+    const m = typedMed();
+    if (!m) return;
+    setMeds([...meds, m]);
     setMedName(''); setMedDose('');
   };
 
@@ -105,7 +110,9 @@ export default function FamilySignup() {
 
   const finish = async (skipMeds = false) => {
     if (!place) return;
-    const chosen = skipMeds ? [] : meds;
+    // A medicine that was typed but not added with the button still counts.
+    const typed = skipMeds ? null : typedMed();
+    const chosen = skipMeds ? [] : typed ? [...meds, typed] : meds;
     const account: Account = {
       id: `acct-family-${Date.now().toString(36)}`,
       role: 'family',
@@ -139,7 +146,8 @@ export default function FamilySignup() {
     setError(null);
     try {
       const firstSchedule: AddScheduleInput[] = chosen.map(m => ({
-        title: `${m.name}${m.dose ? ` ${m.dose}` : ''}`, kind: 'medication', time: m.time, days: [], detail: m.schedule,
+        title: m.name, kind: 'medication', time: m.time, days: [], detail: m.schedule,
+        ...(m.dose ? { dose: m.dose } : {}),
       }));
       await signUpFamily(account, pnc, canGoLive ? password : undefined, firstSchedule);
       router.replace('/(onboard)/connect');

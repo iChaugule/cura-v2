@@ -117,6 +117,10 @@ export interface PaymentRecord {
 
 // ── Care record ─────────────────────────────────────────────
 
+export type FoodRule = 'with' | 'before' | 'after' | 'empty' | 'any';
+
+export type DoseStatus = 'done' | 'refused' | 'skipped';
+
 export type ScheduleKind = 'medication' | 'meal' | 'activity' | 'appointment' | 'other';
 
 /** One thing that should happen: a medicine, a meal, a walk, an appointment. */
@@ -132,6 +136,22 @@ export interface ScheduleItem {
   date?: string;
   /** Dose, instructions, address... */
   detail: string;
+  /** Medicines: "5 mg", "1 tablet". */
+  dose?: string;
+  /** Medicines: how it relates to food. */
+  food?: FoodRule;
+  /** What it is for, in plain words: "blood pressure", "memory". */
+  purpose?: string;
+  /** Who prescribed it, or who the appointment is with. */
+  prescriber?: string;
+  /** Appointments and activities: where. */
+  place?: string;
+  /** Small ordered steps, for routines like getting ready for bed. */
+  steps?: string[];
+  /** Last day a repeating item applies (YYYY-MM-DD), e.g. the end of a course. */
+  endDate?: string;
+  /** Must not be missed; a miss is flagged to the family. */
+  important?: boolean;
   createdById: string;
   createdByName: string;
   createdAt: number;
@@ -146,6 +166,10 @@ export interface ScheduleLog {
   doneById: string;
   doneByName: string;
   doneAt: number;
+  /** Absent means done (older rows). */
+  status?: DoseStatus;
+  /** Why it was refused or skipped, or how it went. */
+  note?: string;
 }
 
 export interface CareNote {
@@ -246,6 +270,18 @@ export interface AiTurn {
   text: string;
   createdAt: number;
   sources?: AiSource[];
+  /** Schedule items Cura proposed; the reader decides whether to add them. */
+  suggestions?: ScheduleSuggestion[];
   pending?: boolean;
   error?: boolean;
+}
+
+export interface ScheduleSuggestion {
+  title: string;
+  kind: ScheduleKind;
+  time: string;
+  days: number[];
+  detail: string;
+  purpose?: string;
+  steps?: string[];
 }

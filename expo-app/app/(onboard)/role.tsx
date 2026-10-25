@@ -114,7 +114,7 @@ const s = StyleSheet.create({
   roleCard: {
     gap: 12, padding: Spacing.md,
     backgroundColor: Colors.surface, borderRadius: Radius.xl,
-    borderWidth: 1, borderColor: Colors.separator,
+    borderWidth: 2, borderColor: Colors.separator,
   },
   roleHead: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   roleIcon: {

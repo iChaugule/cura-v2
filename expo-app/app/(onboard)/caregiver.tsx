@@ -19,6 +19,12 @@ import { useApp } from '../../src/state/AppContext';
 import { friendlyDbError } from '../../src/backend/remote';
 import type { Account, PlaceResult } from '../../src/models/types';
 
+const COMMON = [
+  'Dementia support', 'Memory care', 'Medication management', 'Fall prevention', 'Hydration tracking',
+  'Mobility assistance', 'Personal care', 'Overnight care', 'Companionship', 'Behavioural support',
+  'Palliative care', 'Sundowning',
+];
+
 export default function CaregiverSignup() {
   const { signUpCaregiver, canGoLive } = useApp();
   const [step, setStep] = useState(1);
@@ -42,6 +48,7 @@ export default function CaregiverSignup() {
   const [spokenLanguages, setSpokenLanguages] = useState<string[]>([]);
   const [bio, setBio] = useState('');
   const [more, setMore] = useState(false);
+  const [allSpecs, setAllSpecs] = useState(false);
 
   const toggle = (list: string[], set: (v: string[]) => void, value: string) =>
     set(list.includes(value) ? list.filter(v => v !== value) : [...list, value]);
@@ -140,7 +147,7 @@ export default function CaregiverSignup() {
 
               <Field label="Your specialization" hint="Pick everything you are confident with." required>
                 <View style={s.chipWrap}>
-                  {ALL_SPECIALTIES.map(sp => (
+                  {(allSpecs ? ALL_SPECIALTIES : ALL_SPECIALTIES.filter(x => COMMON.includes(x) || specialties.includes(x))).map(sp => (
                     <Chip
                       key={sp}
                       label={sp}
@@ -148,6 +155,11 @@ export default function CaregiverSignup() {
                       onPress={() => toggle(specialties, setSpecialties, sp)}
                     />
                   ))}
+                  <Chip
+                    label={allSpecs ? 'Show fewer' : 'Show all'}
+                    selected={false}
+                    onPress={() => setAllSpecs(v => !v)}
+                  />
                 </View>
               </Field>
 
