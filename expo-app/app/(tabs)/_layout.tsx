@@ -63,9 +63,10 @@ export default function TabsLayout() {
         }}
       >
         <Tabs.Screen name="index" options={{ title: 'Home', tabBarIcon: icon('home', 'home-outline') }} />
-        <Tabs.Screen name="cura" options={{ title: 'Ask', tabBarIcon: icon('help-circle', 'help-circle-outline') }} />
+        <Tabs.Screen name="schedule" options={{ title: 'Schedule', tabBarIcon: icon('calendar', 'calendar-outline') }} />
         <Tabs.Screen name="messages" options={{ title: 'Messages', tabBarIcon: icon('chatbubbles', 'chatbubbles-outline') }} />
         <Tabs.Screen name="notes" options={{ title: 'Notes', tabBarIcon: icon('document-text', 'document-text-outline') }} />
+        <Tabs.Screen name="cura" options={{ title: 'Ask', tabBarIcon: icon('help-circle', 'help-circle-outline') }} />
         <Tabs.Screen
           name="profile"
           options={{

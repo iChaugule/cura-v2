@@ -20,6 +20,9 @@ import { polishNote } from '../../src/ai/cura';
 import { friendlyError } from '../../src/ai/gemini';
 import { initials, plainSpeech, relativeTime } from '../../src/lib/format';
 import { useSpeech } from '../../src/lib/useSpeech';
+import { useTranslated } from '../../src/lib/useTranslated';
+import { TranslatedText, useAuthorLang } from '../../src/components/HomeBlocks';
+import { languageLabel } from '../../src/ai/cura';
 import { useApp, useCareContext } from '../../src/state/AppContext';
 import type { CareNote, NoteCategory } from '../../src/models/types';
 
@@ -111,9 +114,7 @@ export default function Notes() {
               key={note.id}
               note={note}
               speaking={speakingId === note.id}
-              onSpeak={() =>
-                toggle(note.id, plainSpeech(`${note.title}. ${note.body}`), me?.language ?? 'en')
-              }
+              onSpeak={text => toggle(note.id, plainSpeech(text), me?.language ?? 'en')}
               commentsOpen={openComments === note.id}
               onToggleComments={() => setOpenComments(openComments === note.id ? null : note.id)}
               onComment={body => addComment(note.id, body)}
@@ -155,7 +156,7 @@ function NoteCard({
 }: {
   note: CareNote;
   speaking: boolean;
-  onSpeak: () => void;
+  onSpeak: (text: string) => void;
   commentsOpen: boolean;
   onToggleComments: () => void;
   onComment: (body: string) => void;
@@ -163,6 +164,11 @@ function NoteCard({
   onDelete: () => void;
 }) {
   const [reply, setReply] = useState('');
+  const { me } = useApp();
+  const authorLang = useAuthorLang();
+  const myLang = me?.language ?? 'en';
+  const src = authorLang(note.authorId, note.authorRole);
+  const title = useTranslated(note.title, src, myLang);
   const tone = TrendColors[note.trend];
   const category = CATEGORIES.find(c => c.value === note.category);
 
@@ -170,7 +176,7 @@ function NoteCard({
     <Card style={s.note}>
       <View style={s.noteHead}>
         <View style={{ flex: 1, gap: 3 }}>
-          <Text style={s.noteTitle}>{note.title}</Text>
+          <Text style={s.noteTitle}>{title.text}</Text>
           <View style={s.metaRow}>
             <Text style={s.metaText}>{note.authorName.split(' ')[0]}</Text>
             <Text style={s.dot}>·</Text>
@@ -182,11 +188,13 @@ function NoteCard({
         <Pill label={tone.label} tone={tone} />
       </View>
 
-      <Text style={s.noteBody}>{note.body}</Text>
+      <View style={{ paddingLeft: 4 }}>
+        <TranslatedText text={note.body} sourceLang={src} targetLang={myLang} style={s.noteBody} noteStyle={s.noteTranslated} />
+      </View>
 
       <View style={s.noteActions}>
         <Pressable
-          onPress={onSpeak}
+          onPress={() => onSpeak(`${title.text}. ${note.body}`)}
           accessibilityRole="button"
           accessibilityLabel={speaking ? 'Stop reading' : 'Read this note aloud'}
           style={({ pressed }) => [s.action, speaking && s.actionActive, pressed && { opacity: 0.7 }]}
@@ -243,7 +251,7 @@ function NoteCard({
                   <Text style={s.commentName}>{c.authorName.split(' ')[0]}</Text>
                   <Text style={s.commentTime}>{relativeTime(c.createdAt)}</Text>
                 </View>
-                <Text style={s.commentBody}>{c.body}</Text>
+                <TranslatedText text={c.body} sourceLang={authorLang(c.authorId, c.authorRole)} targetLang={myLang} style={s.commentBody} />
               </View>
             </View>
           ))}
@@ -421,14 +429,14 @@ const s = StyleSheet.create({
   scroll: { paddingHorizontal: Spacing.md, gap: Spacing.sm },
 
   note: { gap: 10, overflow: 'hidden' },
-  trendStripe: { position: 'absolute', left: 0, top: 0, bottom: 0, width: 4 },
   noteHead: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, paddingLeft: 4 },
   catIcon: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
   noteTitle: { ...Type.subhead, color: Colors.textStrong, lineHeight: 21 },
   metaRow: { flexDirection: 'row', alignItems: 'center', gap: 4, flexWrap: 'wrap' },
   metaText: { ...Type.caption, color: Colors.textSecondary, fontWeight: '400' },
   dot: { color: Colors.textTertiary, fontSize: 11 },
-  noteBody: { ...Type.body, fontSize: 14, color: Colors.textPrimary, lineHeight: 21, paddingLeft: 4 },
+  noteTranslated: { fontSize: 12 },
+  noteBody: { ...Type.body, fontSize: 14, color: Colors.textPrimary, lineHeight: 21 },
 
   noteActions: { flexDirection: 'row', gap: Spacing.sm, paddingLeft: 4 },
   action: {

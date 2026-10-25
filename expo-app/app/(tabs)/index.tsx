@@ -20,6 +20,9 @@ import { analyze } from '../../src/engine/patterns';
 import { FindingList, StatusLabel } from '../../src/components/Findings';
 import { DayStrip } from '../../src/components/DayStrip';
 import { CircleCode } from '../../src/components/CircleCode';
+import { QuickNote, RecentMessages, TodaySchedule, useAuthorLang } from '../../src/components/HomeBlocks';
+import { useTranslated } from '../../src/lib/useTranslated';
+import { languageLabel } from '../../src/ai/cura';
 
 export default function Home() {
   const { state, me, them, activeInvite, pendingInvites, refresh, clearSyncError } = useApp();
@@ -119,8 +122,15 @@ export default function Home() {
 
           {findingsSection('What changed')}
 
-          {/* ── Who is looking after them ──────────────── */}
-          <Section title="Care team" />
+          <TodaySchedule />
+
+          <Section title="Latest note" action="All notes" onAction={() => router.push('/(tabs)/notes')} />
+          <NoteCard note={latestNote} empty={`No notes yet. ${caregiver?.name.split(' ')[0] ?? 'The caregiver'} can add one after each visit.`} />
+
+          <RecentMessages />
+
+          {/* ── Who is in the circle ───────────────────── */}
+          <Section title="Care circle" />
           <Card style={{ gap: 12 }}>
             {caregivers.length > 0 ? (
               caregivers.map(c => (
@@ -144,9 +154,6 @@ export default function Home() {
               </Text>
             ) : null}
           </Card>
-
-          <Section title="Latest note" action="All notes" onAction={() => router.push('/(tabs)/notes')} />
-          <NoteCard note={latestNote} empty={`No notes yet. ${caregiver?.name.split(' ')[0] ?? 'The caregiver'} can add one after each visit.`} />
 
           {state.joinCode ? (
             <>
@@ -193,6 +200,12 @@ export default function Home() {
               )}
             </Pressable>
           )}
+
+          <TodaySchedule />
+
+          <QuickNote name={name} />
+
+          <RecentMessages />
 
           {findingsSection('Watch today')}
 
@@ -273,15 +286,26 @@ function Fact({ label, text }: { label: string; text: string }) {
   );
 }
 
-function NoteCard({ note, empty }: { note?: { id: string; title: string; body: string; authorName: string; createdAt: number }; empty: string }) {
+function NoteCard({ note, empty }: {
+  note?: { id: string; title: string; body: string; authorId: string; authorRole: 'family' | 'caregiver'; authorName: string; createdAt: number };
+  empty: string;
+}) {
+  const { me } = useApp();
+  const authorLang = useAuthorLang();
+  const src = note ? authorLang(note.authorId, note.authorRole) : undefined;
+  const title = useTranslated(note?.title ?? '', src, me?.language);
+  const body = useTranslated(note?.body ?? '', src, me?.language);
   if (!note) return <Card><Text style={s.body}>{empty}</Text></Card>;
   return (
     <Pressable onPress={() => router.push('/(tabs)/notes')} accessibilityRole="button">
       {({ pressed }) => (
         <Card style={[{ gap: 4 }, pressed && { opacity: 0.9 }]}>
-          <Text style={s.noteTitle}>{note.title}</Text>
-          <Text style={s.body} numberOfLines={2}>{note.body}</Text>
-          <Text style={s.meta}>{note.authorName.split(' ')[0]} · {relativeTime(note.createdAt)}</Text>
+          <Text style={s.noteTitle}>{title.text}</Text>
+          <Text style={s.body} numberOfLines={2}>{body.text}</Text>
+          <Text style={s.meta}>
+            {note.authorName.split(' ')[0]} · {relativeTime(note.createdAt)}
+            {title.translated || body.translated ? ` · Translated from ${languageLabel(src ?? '')}` : ''}
+          </Text>
         </Card>
       )}
     </Pressable>

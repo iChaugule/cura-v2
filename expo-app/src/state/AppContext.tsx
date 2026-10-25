@@ -17,13 +17,15 @@ import React, {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type {
   Account, AiTurn, CareInvite, CareNote, CaregiverProfile, ChatMessage,
-  NoteCategory, Pnc, QuizResponse, Role,
+  NoteCategory, Pnc, QuizResponse, Role, ScheduleItem, ScheduleKind, ScheduleLog,
 } from '../models/types';
 import type { Trend } from '../design/tokens';
 import { computeScore } from '../data/quiz';
 import { buildDemoSeed } from '../data/demoSeed';
 import { caregiverById } from '../data/caregivers';
 import * as remote from '../backend/remote';
+import { buildDemoSchedule } from '../data/demoSeed';
+import { dateKey, logId } from '../lib/schedule';
 
 const STORAGE_KEY = 'cura.state.v1';
 
@@ -44,6 +46,8 @@ export interface AppState {
   notes: CareNote[];
   quizzes: QuizResponse[];
   messages: ChatMessage[];
+  schedule: ScheduleItem[];
+  scheduleLog: ScheduleLog[];
   /** Chat history kept per role so each side has their own conversation. */
   aiTurns: Record<Role, AiTurn[]>;
 
@@ -73,6 +77,8 @@ const EMPTY: AppState = {
   notes: [],
   quizzes: [],
   messages: [],
+  schedule: [],
+  scheduleLog: [],
   aiTurns: { family: [], caregiver: [] },
   live: false,
   circleId: null,
@@ -105,13 +111,16 @@ type Action =
   | { type: 'addQuiz'; quiz: QuizResponse }
   | { type: 'setQuizInsight'; id: string; insight: string }
   | { type: 'addMessage'; message: ChatMessage }
+  | { type: 'addScheduleItem'; item: ScheduleItem }
+  | { type: 'deleteScheduleItem'; id: string }
+  | { type: 'setDose'; log: ScheduleLog | null; id: string }
   | { type: 'setTranslation'; id: string; lang: string; text: string; sourceLang?: string }
   | { type: 'setTranslating'; id: string; value: boolean }
   | { type: 'setAiTurns'; role: Role; turns: AiTurn[] }
   | { type: 'loadSnapshot'; snap: remote.Snapshot }
   | { type: 'setNearby'; nearby: CaregiverProfile[] }
   | { type: 'upsertInvite'; invite: CareInvite }
-  | { type: 'remoteEntry'; kind: 'note' | 'comment' | 'quiz' | 'message'; id: string; data: any; event: 'INSERT' | 'UPDATE' | 'DELETE' }
+  | { type: 'remoteEntry'; kind: remote.EntryKind; id: string; data: any; event: 'INSERT' | 'UPDATE' | 'DELETE' }
   | { type: 'setPnc'; pnc: Pnc }
   | { type: 'setMembers'; members: Account[] }
   | { type: 'syncError'; message: string | null };
@@ -153,14 +162,24 @@ function fromSnapshot(snap: remote.Snapshot): Partial<AppState> {
     notes: snap.notes,
     quizzes: snap.quizzes.sort((a, b) => b.submittedAt - a.submittedAt),
     messages: snap.messages,
+    schedule: snap.schedule,
+    scheduleLog: snap.scheduleLog,
     syncError: null,
   };
 }
 
 function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
-    case 'hydrate':
-      return { ...state, ...action.state, hydrated: true };
+    case 'hydrate': {
+      const next = { ...state, ...action.state, hydrated: true };
+      // A demo saved before the schedule existed gets one.
+      if (next.demoMode && !next.schedule.length && next.pnc) {
+        const seeded = buildDemoSchedule(next.pnc, next.familyAccount, next.caregiverAccount);
+        next.schedule = seeded.schedule;
+        next.scheduleLog = seeded.log;
+      }
+      return next;
+    }
 
     case 'startDemo': {
       const seed = buildDemoSeed();
@@ -177,6 +196,8 @@ function reducer(state: AppState, action: Action): AppState {
         notes: seed.notes,
         quizzes: seed.quizzes,
         messages: seed.messages,
+        schedule: seed.schedule,
+        scheduleLog: seed.scheduleLog,
         aiTurns: { family: [], caregiver: [] },
       };
     }
@@ -245,6 +266,24 @@ function reducer(state: AppState, action: Action): AppState {
 
     case 'addNote':
       return { ...state, notes: [action.note, ...state.notes] };
+
+    case 'addScheduleItem':
+      return { ...state, schedule: upsertById(state.schedule, action.item, true).sort((a, b) => a.time.localeCompare(b.time)) };
+
+    case 'deleteScheduleItem':
+      return {
+        ...state,
+        schedule: state.schedule.filter(i => i.id !== action.id),
+        scheduleLog: state.scheduleLog.filter(l => l.itemId !== action.id),
+      };
+
+    case 'setDose':
+      return {
+        ...state,
+        scheduleLog: action.log
+          ? upsertById(state.scheduleLog, action.log)
+          : state.scheduleLog.filter(l => l.id !== action.id),
+      };
 
     case 'deleteNote':
       return { ...state, notes: state.notes.filter(n => n.id !== action.id) };
@@ -343,6 +382,8 @@ function reducer(state: AppState, action: Action): AppState {
             .map(n => ({ ...n, comments: n.comments.filter(c => c.id !== id) })),
           quizzes: state.quizzes.filter(q => q.id !== id),
           messages: state.messages.filter(m => m.id !== id),
+          schedule: state.schedule.filter(i => i.id !== id),
+          scheduleLog: state.scheduleLog.filter(l => l.id !== id && l.itemId !== id),
         };
       }
       if (kind === 'note') {
@@ -365,6 +406,12 @@ function reducer(state: AppState, action: Action): AppState {
         const existing = state.messages.find(m => m.id === id);
         const merged = { ...data, translations: existing?.translations ?? {} };
         return { ...state, messages: upsertById(state.messages, merged, true).sort((a, b) => a.createdAt - b.createdAt) };
+      }
+      if (kind === 'schedule') {
+        return { ...state, schedule: upsertById(state.schedule, data, true).sort((a, b) => a.time.localeCompare(b.time)) };
+      }
+      if (kind === 'dose') {
+        return { ...state, scheduleLog: upsertById(state.scheduleLog, data) };
       }
       return state;
     }
@@ -395,7 +442,7 @@ export interface AppApi {
   setActiveRole: (role: Role) => void;
   /** Demo helper: give the other side an account so you can look through it. */
   ensureCaregiverAccount: (name: string, language?: string) => void;
-  signUpFamily: (account: Account, pnc: Pnc, password?: string) => Promise<void>;
+  signUpFamily: (account: Account, pnc: Pnc, password?: string, firstSchedule?: AddScheduleInput[]) => Promise<void>;
   signUpCaregiver: (account: Account, profile: remote.CaregiverListing, password?: string) => Promise<void>;
   /** A relative joining a circle someone else created. */
   joinWithCode: (account: Account, code: string, password: string) => Promise<void>;
@@ -417,6 +464,12 @@ export interface AppApi {
   ) => QuizResponse;
   setQuizInsight: (id: string, insight: string) => void;
   addMessage: (text: string) => ChatMessage;
+  addScheduleItem: (input: AddScheduleInput) => ScheduleItem;
+  deleteScheduleItem: (id: string) => void;
+  /** Tick an item done for a date, or untick it. */
+  toggleDose: (itemId: string, date?: string) => void;
+  /** A signed-in person (a caregiver, usually) joining a circle with its code. */
+  joinCircleWithCode: (code: string, role: Role) => Promise<void>;
   setTranslation: (id: string, lang: string, text: string, sourceLang?: string) => void;
   setTranslating: (id: string, value: boolean) => void;
   setAiTurns: (role: Role, turns: AiTurn[]) => void;
@@ -431,6 +484,15 @@ export interface SendInviteInput {
   daysPerWeek: number;
   message: string;
   paymentMethod: string;
+}
+
+export interface AddScheduleInput {
+  title: string;
+  kind: ScheduleKind;
+  time: string;
+  days: number[];
+  date?: string;
+  detail: string;
 }
 
 export interface AddNoteInput {
@@ -542,13 +604,22 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // A caregiver can be signed in before any family has invited them.
   const isOnboarded = !!me && (!!state.pnc || (state.live && state.activeRole === 'caregiver'));
 
-  const signUpFamily = useCallback<AppApi['signUpFamily']>(async (account, pnc, password) => {
+  const signUpFamily = useCallback<AppApi['signUpFamily']>(async (account, pnc, password, firstSchedule = []) => {
+    const mk = (input: AddScheduleInput): ScheduleItem => ({
+      id: uid('sched'), createdById: account.id, createdByName: account.name, createdAt: Date.now(), ...input,
+    });
     if (!remote.isLive || !password) {
       dispatch({ type: 'signUpFamily', account, pnc });
+      firstSchedule.forEach(i => dispatch({ type: 'addScheduleItem', item: mk(i) }));
       return;
     }
     await remote.signUp(account.email, password, account);
-    await remote.createCircle(pnc);
+    const circle = await remote.createCircle(pnc);
+    const me = (await remote.loadSnapshot())?.me;
+    for (const input of firstSchedule) {
+      const item = { ...mk(input), createdById: me?.id ?? account.id };
+      await remote.addEntry(circle.id, 'schedule', item.id, item).catch(() => {});
+    }
     await loadFromServer();
   }, [loadFromServer]);
 
@@ -721,6 +792,50 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return message;
   }, [push]);
 
+  const addScheduleItem = useCallback((input: AddScheduleInput): ScheduleItem => {
+    const a = author();
+    const item: ScheduleItem = {
+      id: uid('sched'),
+      createdById: a?.id ?? 'unknown',
+      createdByName: a?.name ?? 'Someone',
+      createdAt: Date.now(),
+      ...input,
+    };
+    dispatch({ type: 'addScheduleItem', item });
+    const c = live.current.circleId;
+    if (c) push(() => remote.addEntry(c, 'schedule', item.id, item));
+    return item;
+  }, [push]);
+
+  const deleteScheduleItem = useCallback((id: string) => {
+    dispatch({ type: 'deleteScheduleItem', id });
+    const s = live.current;
+    // The item's done-log rows go with it.
+    s.scheduleLog.filter(l => l.itemId === id).forEach(l => push(() => remote.deleteEntry(l.id)));
+    push(() => remote.deleteEntry(id));
+  }, [push]);
+
+  const toggleDose = useCallback((itemId: string, date: string = dateKey()) => {
+    const s = live.current;
+    const id = logId(itemId, date);
+    if (s.scheduleLog.some(l => l.id === id)) {
+      dispatch({ type: 'setDose', log: null, id });
+      push(() => remote.deleteEntry(id));
+      return;
+    }
+    const a = author();
+    const log: ScheduleLog = {
+      id, itemId, date, doneById: a?.id ?? 'unknown', doneByName: a?.name ?? 'Someone', doneAt: Date.now(),
+    };
+    dispatch({ type: 'setDose', log, id });
+    if (s.circleId) push(() => remote.addEntry(s.circleId as string, 'dose', id, log));
+  }, [push]);
+
+  const joinCircleWithCode = useCallback(async (code: string, role: Role) => {
+    await remote.joinCircle(code, role === 'caregiver' ? 'caregiver' : 'family');
+    await loadFromServer();
+  }, [loadFromServer]);
+
   const deleteNote = useCallback((id: string) => {
     dispatch({ type: 'deleteNote', id });
     push(() => remote.deleteEntry(id));
@@ -784,6 +899,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     submitQuiz,
     setQuizInsight,
     addMessage,
+    addScheduleItem,
+    deleteScheduleItem,
+    toggleDose,
+    joinCircleWithCode,
     setTranslation: (id, lang, text, sourceLang) =>
       dispatch({ type: 'setTranslation', id, lang, text, sourceLang }),
     setTranslating: (id, value) => dispatch({ type: 'setTranslating', id, value }),
@@ -792,7 +911,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }), [
     state, me, them, activeInvite, pendingInvites, isOnboarded, reset, signUpFamily, signUpCaregiver,
     joinWithCode, signIn, refresh, searchCaregivers, updatePnc, sendInvite, respondToInvite, addNote,
-    deleteNote, addComment, submitQuiz, setQuizInsight, addMessage, push,
+    deleteNote, addComment, submitQuiz, setQuizInsight, addMessage, addScheduleItem, deleteScheduleItem,
+    toggleDose, joinCircleWithCode, push,
   ]);
 
   return <Ctx.Provider value={api}>{children}</Ctx.Provider>;
@@ -816,11 +936,13 @@ export function useCareContext() {
     notes: state.notes,
     quizzes: state.quizzes,
     messages: state.messages,
+    schedule: state.schedule,
+    scheduleLog: state.scheduleLog,
     invite: state.invites.find(i => i.status === 'accepted') ?? state.invites[0] ?? null,
     caregiverName,
     familyName: state.familyAccount?.name ?? null,
     viewerRole: state.activeRole,
     viewerName: me?.name ?? 'there',
-  }), [state.pnc, state.notes, state.quizzes, state.messages, state.invites,
+  }), [state.pnc, state.notes, state.quizzes, state.messages, state.schedule, state.scheduleLog, state.invites,
        caregiverName, state.familyAccount, state.activeRole, me]);
 }

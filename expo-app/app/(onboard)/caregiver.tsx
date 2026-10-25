@@ -41,13 +41,14 @@ export default function CaregiverSignup() {
   const [specialties, setSpecialties] = useState<string[]>([]);
   const [spokenLanguages, setSpokenLanguages] = useState<string[]>([]);
   const [bio, setBio] = useState('');
+  const [more, setMore] = useState(false);
 
   const toggle = (list: string[], set: (v: string[]) => void, value: string) =>
     set(list.includes(value) ? list.filter(v => v !== value) : [...list, value]);
 
   const step1Valid =
     name.trim().length > 1 && email.includes('@') && (!canGoLive || password.length >= 6);
-  const step2Valid = specialties.length > 0 && Number(rate) > 0 && !!area;
+  const step2Valid = specialties.length > 0 && !!area;
 
   const finish = async () => {
     if (!area) return;
@@ -63,7 +64,7 @@ export default function CaregiverSignup() {
     setError(null);
     try {
       await signUpCaregiver(account, {
-        hourlyRate: Number(rate),
+        hourlyRate: Number(rate) || 0,
         yearsExperience: Number(years) || 1,
         specialties,
         languages: spokenLanguages.length ? spokenLanguages : ['English'],
@@ -137,6 +138,26 @@ export default function CaregiverSignup() {
             <View style={s.form}>
               <Text style={s.lead}>What kind of care do you give?</Text>
 
+              <Field label="Your specialization" hint="Pick everything you are confident with." required>
+                <View style={s.chipWrap}>
+                  {ALL_SPECIALTIES.map(sp => (
+                    <Chip
+                      key={sp}
+                      label={sp}
+                      selected={specialties.includes(sp)}
+                      onPress={() => toggle(specialties, setSpecialties, sp)}
+                    />
+                  ))}
+                </View>
+              </Field>
+
+              <Field label="Proof of training or experience">
+                <Text style={s.proof}>
+                  Certificates and licences can wait. Skip this for now. Families will see that your profile is not
+                  verified yet.
+                </Text>
+              </Field>
+
               <Field
                 label="Where you work"
                 hint="Your neighbourhood or town. Families see the area, never your address."
@@ -159,23 +180,6 @@ export default function CaregiverSignup() {
                 />
               </Field>
 
-              <Field label="One line about you" hint="Shown under your name in search.">
-                <Input value={headline} onChangeText={setHeadline} placeholder="Memory care, 6 years, Marathi speaker" />
-              </Field>
-
-              <Field label="Your specialties" hint="Pick everything you are confident with." required>
-                <View style={s.chipWrap}>
-                  {ALL_SPECIALTIES.map(sp => (
-                    <Chip
-                      key={sp}
-                      label={sp}
-                      selected={specialties.includes(sp)}
-                      onPress={() => toggle(specialties, setSpecialties, sp)}
-                    />
-                  ))}
-                </View>
-              </Field>
-
               <Field label="Years of experience">
                 <Segmented
                   options={['1', '3', '5', '8', '10'].map(y => ({ value: y, label: `${y}+` }))}
@@ -184,29 +188,40 @@ export default function CaregiverSignup() {
                 />
               </Field>
 
-              <Field label="Your hourly rate (₹)" required>
-                <Input value={rate} onChangeText={setRate} keyboardType="number-pad" placeholder="320" />
-              </Field>
+              <Button
+                label={more ? 'Hide extra details' : 'Add more about you (optional)'}
+                variant="ghost"
+                onPress={() => setMore(v => !v)}
+              />
 
-              <Field label="Languages you speak">
-                <View style={s.chipWrap}>
-                  {['English', 'Marathi', 'Hindi', 'Tamil', 'Telugu', 'Bengali', 'Gujarati', 'Malayalam'].map(l => (
-                    <Chip
-                      key={l}
-                      label={l}
-                      selected={spokenLanguages.includes(l)}
-                      onPress={() => toggle(spokenLanguages, setSpokenLanguages, l)}
+              {more ? (
+                <>
+                  <Field label="One line about you" hint="Shown under your name in search.">
+                    <Input value={headline} onChangeText={setHeadline} placeholder="Memory care, 6 years, Marathi speaker" />
+                  </Field>
+                  <Field label="Your hourly rate (₹)">
+                    <Input value={rate} onChangeText={setRate} keyboardType="number-pad" placeholder="320" />
+                  </Field>
+                  <Field label="Languages you speak">
+                    <View style={s.chipWrap}>
+                      {['English', 'Marathi', 'Hindi', 'Tamil', 'Telugu', 'Bengali', 'Gujarati', 'Malayalam'].map(l => (
+                        <Chip
+                          key={l}
+                          label={l}
+                          selected={spokenLanguages.includes(l)}
+                          onPress={() => toggle(spokenLanguages, setSpokenLanguages, l)}
+                        />
+                      ))}
+                    </View>
+                  </Field>
+                  <Field label="About you" hint="Two or three honest sentences.">
+                    <Input
+                      value={bio} onChangeText={setBio} multiline
+                      placeholder="6 years in memory care. Calm, unhurried approach, and I write a full note every day."
                     />
-                  ))}
-                </View>
-              </Field>
-
-              <Field label="About you" hint="Families read this first. Two or three honest sentences.">
-                <Input
-                  value={bio} onChangeText={setBio} multiline
-                  placeholder="6 years in memory care. Calm, unhurried approach, and I write a full note every day."
-                />
-              </Field>
+                  </Field>
+                </>
+              ) : null}
             </View>
           )}
         </ScrollView>
@@ -215,7 +230,7 @@ export default function CaregiverSignup() {
           {error ? <Text style={s.error} accessibilityLiveRegion="polite">{error}</Text> : null}
           <Button
             label={step === 1 ? 'Continue' : saving ? 'Creating your profile' : 'Create my profile'}
-            icon={step === 1 ? 'arrow-forward' : 'checkmark'}
+            icon={step === 1 ? 'arrow-forward' : undefined}
             disabled={(step === 1 ? !step1Valid : !step2Valid) || saving}
             onPress={() => (step === 1 ? setStep(2) : finish())}
           />
@@ -230,6 +245,7 @@ const s = StyleSheet.create({
   scroll: { padding: Spacing.md, paddingBottom: Spacing.xxl },
   form: { gap: Spacing.md },
   lead: { ...Type.title, color: Colors.textStrong },
+  proof: { ...Type.callout, color: Colors.textSecondary, fontWeight: '400' },
   chipWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm },
   error: { ...Type.callout, color: Colors.urgent, marginBottom: Spacing.sm },
   footer: {

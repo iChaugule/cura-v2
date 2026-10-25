@@ -14,7 +14,7 @@ import { createClient, type RealtimeChannel, type SupabaseClient } from '@supaba
 import { Platform } from 'react-native';
 import type {
   Account, CareInvite, CareNote, CaregiverProfile, ChatMessage, GeoPoint, NoteComment, Pnc,
-  QuizResponse, Role,
+  QuizResponse, Role, ScheduleItem, ScheduleLog,
 } from '../models/types';
 import { haversineKm } from '../lib/geo';
 
@@ -66,7 +66,7 @@ interface InviteRow {
   status: CareInvite['status']; data: Omit<CareInvite, 'id' | 'status'>; created_at: string;
   responded_at: string | null;
 }
-type EntryKind = 'note' | 'comment' | 'quiz' | 'message';
+export type EntryKind = 'note' | 'comment' | 'quiz' | 'message' | 'schedule' | 'dose';
 interface EntryRow { id: string; circle_id: string; author_id: string; kind: EntryKind; data: any; created_at: string }
 
 export interface CaregiverListing {
@@ -159,6 +159,8 @@ export interface Snapshot {
   notes: CareNote[];
   quizzes: QuizResponse[];
   messages: ChatMessage[];
+  schedule: ScheduleItem[];
+  scheduleLog: ScheduleLog[];
   listing: CaregiverListing | null;
 }
 
@@ -234,7 +236,10 @@ export function entriesToState(rows: EntryRow[]) {
   const quizzes = rows.filter(r => r.kind === 'quiz').map(r => r.data as QuizResponse);
   const messages = rows.filter(r => r.kind === 'message').map(r => r.data as ChatMessage)
     .sort((a, b) => a.createdAt - b.createdAt);
-  return { notes, quizzes, messages };
+  const schedule = rows.filter(r => r.kind === 'schedule').map(r => r.data as ScheduleItem)
+    .sort((a, b) => a.time.localeCompare(b.time));
+  const scheduleLog = rows.filter(r => r.kind === 'dose').map(r => r.data as ScheduleLog);
+  return { notes, quizzes, messages, schedule, scheduleLog };
 }
 
 export async function addEntry(circleId: string, kind: EntryKind, id: string, data: object) {

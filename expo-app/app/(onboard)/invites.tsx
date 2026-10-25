@@ -9,7 +9,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { ScreenHeader } from '../../src/components/ScreenHeader';
-import { Avatar, Button, Card, Chip, EmptyState, KeyValue, Pill } from '../../src/components/ui';
+import { Avatar, Button, Card, Chip, EmptyState, Field, Input, KeyValue, Pill, Segmented } from '../../src/components/ui';
 import { Colors, Radius, Spacing, Type } from '../../src/design/tokens';
 import { initials, relativeTime, rupees } from '../../src/lib/format';
 import { useApp } from '../../src/state/AppContext';
@@ -24,7 +24,11 @@ const DECLINE_REASONS = [
 ];
 
 export default function CaregiverInbox() {
-  const { state, respondToInvite, refresh, reset } = useApp();
+  const { state, respondToInvite, refresh, reset, joinCircleWithCode } = useApp();
+  const [tab, setTab] = useState<'requests' | 'code'>('requests');
+  const [code, setCode] = useState('');
+  const [joining, setJoining] = useState(false);
+  const [codeError, setCodeError] = useState<string | null>(null);
   /** A signed-in caregiver no family has connected with yet. */
   const noCircle = state.live && !state.circleId;
   const pnc = state.pnc;
@@ -53,6 +57,30 @@ export default function CaregiverInbox() {
   };
   const accept = (invite: CareInvite) => answer(invite, true);
   const decline = (invite: CareInvite, reason: string) => answer(invite, false, reason);
+
+  const joinNow = async () => {
+    setJoining(true);
+    setCodeError(null);
+    try {
+      await joinCircleWithCode(code, 'caregiver');
+      router.replace('/(tabs)');
+    } catch (err) {
+      setCodeError(friendlyDbError(err));
+    } finally {
+      setJoining(false);
+    }
+  };
+
+  const tabs = (
+    <Segmented
+      options={[
+        { value: 'requests', label: `Requests${pending.length ? ` (${pending.length})` : ''}` },
+        { value: 'code', label: 'Enter a code' },
+      ]}
+      value={tab}
+      onChange={v => setTab(v as 'requests' | 'code')}
+    />
+  );
 
   if (settled) {
     const invite = state.invites.find(i => i.id === settled.id);
@@ -96,6 +124,46 @@ export default function CaregiverInbox() {
     );
   }
 
+  if (tab === 'code') {
+    return (
+      <SafeAreaView style={s.safe} edges={['top']}>
+        <ScreenHeader
+          title="Join a care circle"
+          subtitle="Use the code a family gave you"
+          onBack={router.canGoBack() ? () => router.back() : undefined}
+          right={
+            noCircle ? (
+              <Pressable onPress={() => reset().then(() => router.replace('/'))} hitSlop={8} accessibilityRole="button">
+                <Text style={s.skip}>Sign out</Text>
+              </Pressable>
+            ) : undefined
+          }
+        />
+        <ScrollView contentContainerStyle={s.scroll} keyboardShouldPersistTaps="handled">
+          {tabs}
+          <Text style={s.codeLead}>Enter the 6-character code</Text>
+          <Text style={s.codeSub}>
+            The family finds it on their Cura home screen. Once you join, you see the care profile, the schedule and the
+            notes, and you can message everyone in the circle.
+          </Text>
+          <Field label="Circle code">
+            <Input
+              value={code}
+              onChangeText={t => setCode(t.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6))}
+              placeholder="A1B2C3" autoCapitalize="characters" autoCorrect={false}
+              style={{ letterSpacing: 4, fontSize: 20, fontWeight: '700' }}
+            />
+          </Field>
+          {!state.live ? (
+            <Text style={s.codeSub}>Codes work with a real Cura account. This is the demo, so there is nothing to join.</Text>
+          ) : null}
+          {codeError ? <Text style={s.errorText} accessibilityLiveRegion="polite">{codeError}</Text> : null}
+          <Button label={joining ? 'Joining' : 'Join the circle'} disabled={code.length !== 6 || joining || !state.live} onPress={joinNow} />
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={s.safe} edges={['top']}>
       <ScreenHeader
@@ -116,6 +184,7 @@ export default function CaregiverInbox() {
       />
 
       <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
+        {tabs}
         {pending.length === 0 && responded.length === 0 ? (
           <EmptyState
             icon="mail-outline"
@@ -192,7 +261,7 @@ export default function CaregiverInbox() {
             ) : busy === invite.id ? (
               <View style={s.busyRow}>
                 <ActivityIndicator color={Colors.brown} />
-                <Text style={s.busyText}>Processing payment…</Text>
+                <Text style={s.busyText}>Joining the circle</Text>
               </View>
             ) : (
               <View style={s.actions}>
@@ -243,6 +312,8 @@ export default function CaregiverInbox() {
 }
 
 const s = StyleSheet.create({
+  codeLead: { ...Type.title, color: Colors.textStrong },
+  codeSub: { ...Type.callout, color: Colors.textSecondary, fontWeight: '400' },
   errorText: { ...Type.callout, color: Colors.urgent },
   safe: { flex: 1, backgroundColor: Colors.bgBase },
   scroll: { padding: Spacing.md, gap: Spacing.md, paddingBottom: Spacing.xl },

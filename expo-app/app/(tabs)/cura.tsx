@@ -16,6 +16,7 @@ import { RichText } from '../../src/components/RichText';
 import { Avatar, Chip } from '../../src/components/ui';
 import { Colors, Radius, Spacing, Type } from '../../src/design/tokens';
 import { askCura, suggestedPrompts } from '../../src/ai/cura';
+import { emergencyNumber } from '../../src/lib/emergency';
 import { friendlyError } from '../../src/ai/gemini';
 import { clockTime, initials, plainSpeech, possessive } from '../../src/lib/format';
 import { useSpeech } from '../../src/lib/useSpeech';
@@ -29,6 +30,7 @@ export default function CuraAI() {
   const { state, me, setAiTurns } = useApp();
   const ctx = useCareContext();
   const role = state.activeRole;
+  const emergency = emergencyNumber(state.pnc?.address).label;
   const turns = state.aiTurns[role] ?? [];
 
   const [input, setInput] = useState('');
@@ -178,7 +180,7 @@ export default function CuraAI() {
           </Pressable>
         </View>
         <Text style={s.disclaimer}>
-          Cura AI checks credible medical sources but cannot diagnose. In an emergency call 112.
+          Cura AI checks credible medical sources but cannot diagnose. In an emergency call {emergency}.
         </Text>
       </KeyboardAvoidingView>
     </View>

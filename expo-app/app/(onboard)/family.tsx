@@ -12,11 +12,20 @@ import { router } from 'expo-router';
 import { ScreenHeader } from '../../src/components/ScreenHeader';
 import { AddressField } from '../../src/components/AddressField';
 import { Button, Chip, Field, Input, Segmented } from '../../src/components/ui';
-import { Colors, Spacing, Type } from '../../src/design/tokens';
+import { Colors, Radius, Spacing, Type } from '../../src/design/tokens';
 import { LANGUAGES } from '../../src/ai/cura';
 import { useApp } from '../../src/state/AppContext';
 import { friendlyDbError } from '../../src/backend/remote';
-import type { Account, PlaceResult, Pnc } from '../../src/models/types';
+import { timeLabel } from '../../src/lib/schedule';
+import type { AddScheduleInput } from '../../src/state/AppContext';
+import type { Account, Medication, PlaceResult, Pnc } from '../../src/models/types';
+
+const DOSE_TIMES = [
+  { value: '08:00', label: 'Morning' },
+  { value: '13:00', label: 'Midday' },
+  { value: '18:00', label: 'Evening' },
+  { value: '21:00', label: 'Bedtime' },
+];
 
 const CONDITIONS = [
   "Alzheimer's / dementia", 'Hypertension', 'Diabetes', 'Arthritis',
@@ -70,6 +79,21 @@ export default function FamilySignup() {
   const [calming, setCalming] = useState('');
   const [emergencyPhone, setEmergencyPhone] = useState('');
 
+  // Step 4: medicines (optional). Each one also becomes a schedule entry.
+  const [meds, setMeds] = useState<(Medication & { time: string })[]>([]);
+  const [medName, setMedName] = useState('');
+  const [medDose, setMedDose] = useState('');
+  const [medTime, setMedTime] = useState('08:00');
+  const addMed = () => {
+    if (!medName.trim()) return;
+    const when = DOSE_TIMES.find(t => t.value === medTime)?.label.toLowerCase() ?? 'daily';
+    setMeds([...meds, {
+      id: `med-${Date.now().toString(36)}`, name: medName.trim(), dose: medDose.trim(),
+      schedule: `Once daily, ${when}`, time: medTime,
+    }]);
+    setMedName(''); setMedDose('');
+  };
+
   const toggle = (list: string[], set: (v: string[]) => void, value: string) =>
     set(list.includes(value) ? list.filter(v => v !== value) : [...list, value]);
 
@@ -77,10 +101,11 @@ export default function FamilySignup() {
     name.trim().length > 1 && email.includes('@') && (!canGoLive || password.length >= 6);
   const step2Valid =
     preferredName.trim().length > 0 && !!place && Number(age) > 0 && Number(age) < 130;
-  const step3Valid = conditions.length > 0 || diet.trim().length > 0;
+  const step3Valid = true; // everything on this step is optional
 
-  const finish = async () => {
+  const finish = async (skipMeds = false) => {
     if (!place) return;
+    const chosen = skipMeds ? [] : meds;
     const account: Account = {
       id: `acct-family-${Date.now().toString(36)}`,
       role: 'family',
@@ -102,7 +127,7 @@ export default function FamilySignup() {
       mobility: MOBILITY_TEXT[mobility],
       diet: diet.trim() || 'No special dietary requirements recorded.',
       languages: careLanguages.length ? careLanguages : ['English'],
-      medications: [],
+      medications: chosen.map(({ time: _t, ...m }) => m),
       allergies: '',
       emergencyContact: `${name.trim()} (${relationship.trim() || 'family'})`,
       emergencyPhone: emergencyPhone.trim() || phone.trim(),
@@ -113,8 +138,11 @@ export default function FamilySignup() {
     setSaving(true);
     setError(null);
     try {
-      await signUpFamily(account, pnc, canGoLive ? password : undefined);
-      router.replace('/(onboard)/find-care');
+      const firstSchedule: AddScheduleInput[] = chosen.map(m => ({
+        title: `${m.name}${m.dose ? ` ${m.dose}` : ''}`, kind: 'medication', time: m.time, days: [], detail: m.schedule,
+      }));
+      await signUpFamily(account, pnc, canGoLive ? password : undefined, firstSchedule);
+      router.replace('/(onboard)/connect');
     } catch (err) {
       setError(friendlyDbError(err));
     } finally {
@@ -122,15 +150,15 @@ export default function FamilySignup() {
     }
   };
 
-  const canAdvance = step === 1 ? step1Valid : step === 2 ? step2Valid : step3Valid;
+  const canAdvance = step === 1 ? step1Valid : step === 2 ? step2Valid : true;
 
   return (
     <SafeAreaView style={s.safe} edges={['top']}>
       <ScreenHeader
         title="Set up care"
-        subtitle={['About you', `About ${preferredName.trim() || 'them'}`, 'Their care needs'][step - 1]}
+        subtitle={['About you', `About ${preferredName.trim() || 'them'}`, 'Their care needs', 'Medicines and records'][step - 1]}
         step={step + 1}
-        totalSteps={4}
+        totalSteps={5}
         onBack={step === 1 ? undefined : () => setStep(step - 1)}
       />
 
@@ -319,23 +347,70 @@ export default function FamilySignup() {
               </Field>
             </View>
           )}
+
+          {step === 4 && (
+            <View style={s.form}>
+              <Text style={s.lead}>Medicines and records</Text>
+              <Text style={s.sub}>
+                Both are optional. Medicines you add here go straight onto the daily schedule so the caregiver knows
+                when each one is due.
+              </Text>
+
+              <Field label="Add a medicine">
+                <View style={{ gap: Spacing.sm }}>
+                  <Input value={medName} onChangeText={setMedName} placeholder="Donepezil" autoCapitalize="words" />
+                  <Input value={medDose} onChangeText={setMedDose} placeholder="5 mg" />
+                  <View style={s.chipWrap}>
+                    {DOSE_TIMES.map(t => (
+                      <Chip key={t.value} label={`${t.label} ${timeLabel(t.value)}`} selected={medTime === t.value} onPress={() => setMedTime(t.value)} />
+                    ))}
+                  </View>
+                  <Button label="Add medicine" variant="secondary" disabled={!medName.trim()} onPress={addMed} />
+                </View>
+              </Field>
+
+              {meds.length > 0 ? (
+                <View style={{ gap: Spacing.sm }}>
+                  {meds.map(m => (
+                    <View key={m.id} style={s.medRow}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={s.medName}>{m.name}{m.dose ? ` ${m.dose}` : ''}</Text>
+                        <Text style={s.medMeta}>{timeLabel(m.time)} every day</Text>
+                      </View>
+                      <Chip label="Remove" onPress={() => setMeds(meds.filter(x => x.id !== m.id))} />
+                    </View>
+                  ))}
+                </View>
+              ) : null}
+
+              <Field label="Medical records">
+                <Text style={s.sub}>
+                  Skip this for now. Uploading records is not available yet. Cura AI uses the conditions, medicines and
+                  notes you enter instead.
+                </Text>
+              </Field>
+            </View>
+          )}
         </ScrollView>
 
         <View style={s.footer}>
           {error ? <Text style={s.error} accessibilityLiveRegion="polite">{error}</Text> : null}
           <Button
-            label={step === 3 ? (saving ? 'Setting up care' : 'Find caregivers nearby') : 'Continue'}
-            icon={step === 3 ? 'search' : 'arrow-forward'}
+            label={step === 4 ? (saving ? 'Setting up care' : 'Create account') : 'Continue'}
+            icon={step === 4 ? undefined : 'arrow-forward'}
             disabled={!canAdvance || saving}
-            onPress={() => (step === 3 ? finish() : setStep(step + 1))}
+            onPress={() => (step === 4 ? finish() : setStep(step + 1))}
           />
+          {step === 4 ? (
+            <Button label="Skip medicines and records" variant="ghost" disabled={saving} onPress={() => finish(true)} />
+          ) : null}
           {!canAdvance ? (
             <Text style={s.hint}>
               {step === 1
                 ? (canGoLive ? 'Add your name, a valid email and a password of 6 or more characters.' : 'Add your name and a valid email to continue.')
                 : step === 2
                   ? 'Add their name, age, and pick their address from the list.'
-                  : 'Pick at least one condition, or describe their diet.'}
+                  : ''}
             </Text>
           ) : null}
         </View>
@@ -359,4 +434,10 @@ const s = StyleSheet.create({
     backgroundColor: Colors.bgBase,
   },
   hint: { ...Type.caption, color: Colors.textTertiary, fontWeight: '400', textAlign: 'center' },
+  medRow: {
+    flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, padding: Spacing.sm,
+    borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.separator, backgroundColor: Colors.surface,
+  },
+  medName: { ...Type.subhead, color: Colors.textStrong },
+  medMeta: { ...Type.caption, color: Colors.textSecondary, fontWeight: '400' },
 });

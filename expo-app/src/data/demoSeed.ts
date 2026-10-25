@@ -7,8 +7,9 @@
  * `demoMode` flag when real accounts land.
  */
 import type {
-  Account, CareInvite, CareNote, ChatMessage, Pnc, QuizResponse,
+  Account, CareInvite, CareNote, ChatMessage, Pnc, QuizResponse, ScheduleItem, ScheduleLog,
 } from '../models/types';
+import { dateKey, logId, minutesOf } from '../lib/schedule';
 import { computeScore } from './quiz';
 
 const HOUR = 3600_000;
@@ -22,6 +23,41 @@ export interface DemoSeed {
   notes: CareNote[];
   quizzes: QuizResponse[];
   messages: ChatMessage[];
+  schedule: ScheduleItem[];
+  scheduleLog: ScheduleLog[];
+}
+
+export function buildDemoSchedule(pnc: Pnc, family: Account | null, caregiver: Account | null) {
+  const by = family ?? caregiver;
+  const mk = (title: string, kind: ScheduleItem['kind'], time: string, detail: string, extra: Partial<ScheduleItem> = {}): ScheduleItem => ({
+    id: `sched-${time.replace(':', '')}-${kind}`, title, kind, time, days: [], detail,
+    createdById: by?.id ?? 'demo', createdByName: by?.name ?? 'Family', createdAt: Date.now() - 20 * DAY, ...extra,
+  });
+  const inThree = dateKey(Date.now() + 3 * DAY);
+  const schedule: ScheduleItem[] = [
+    mk('Chai and a glass of water', 'meal', '07:00', 'Cardamom chai. Offer a full glass of water with it.'),
+    mk('Amlodipine 5 mg', 'medication', '08:30', 'Once daily, after breakfast.'),
+    mk('Walk in the corridor', 'activity', '09:30', '10 to 15 minutes before it gets hot. Hand on her elbow.'),
+    mk('Coconut water', 'meal', '11:00', 'Small glass. Offer again every half hour through the afternoon.'),
+    mk('Calcium and Vitamin D3', 'medication', '13:30', '1 tablet, after lunch.'),
+    mk('Lights on, curtains closed', 'activity', '16:00', 'Before dusk, to ease the evening restlessness.'),
+    mk('Chai and the photo album', 'activity', '17:00', 'Sit beside her. This settles her best.'),
+    mk('Evening prayer', 'activity', '19:00', 'Marathi bhajans, low volume.'),
+    mk('Donepezil 5 mg', 'medication', '21:00', 'Once daily, at bedtime.'),
+    mk('Doctor visit: blood pressure review', 'appointment', '11:30', 'Bring the last week of check-ins.', { days: [], date: inThree }),
+  ];
+  // Everything that was due earlier today is already ticked off by the caregiver.
+  const now = new Date();
+  const today = dateKey(now);
+  const nowMin = now.getHours() * 60 + now.getMinutes();
+  const log: ScheduleLog[] = schedule
+    .filter(i => !i.date && minutesOf(i.time) + 30 < nowMin)
+    .map(i => ({
+      id: logId(i.id, today), itemId: i.id, date: today,
+      doneById: caregiver?.id ?? 'demo', doneByName: caregiver?.name ?? 'Caregiver',
+      doneAt: now.getTime() - 10 * 60_000,
+    }));
+  return { schedule, log };
 }
 
 export function buildDemoSeed(): DemoSeed {
@@ -54,7 +90,7 @@ export function buildDemoSeed(): DemoSeed {
     pronouns: 'she/her',
     address: 'Flat 4B, Sahyadri Apartments, Shivaji Nagar, Pune 411005',
     location: { lat: 18.5308, lng: 73.8475 },
-    conditions: ["Moderate Alzheimer's", 'Hypertension', 'Osteoarthritis (knees)'],
+    conditions: ["Alzheimer's disease", 'Hypertension', 'Osteoarthritis (knees)'],
     mobility: 'Walks short distances with a walker. High fall risk on hard floors. Needs a hand on stairs.',
     diet: 'Soft vegetarian food. Low salt. Prefers dal rice, idli, and cardamom chai. Small frequent meals work best.',
     languages: ['Marathi', 'Hindi'],
@@ -292,7 +328,8 @@ export function buildDemoSeed(): DemoSeed {
     }),
   ];
 
-  return { family, caregiver, pnc, invites, notes, quizzes, messages };
+  const sched = buildDemoSchedule(pnc, family, caregiver);
+  return { family, caregiver, pnc, invites, notes, quizzes, messages, schedule: sched.schedule, scheduleLog: sched.log };
 }
 
 /**
@@ -316,7 +353,7 @@ export function pendingInviteForNewCaregiver(caregiverId: string, caregiverName:
     hourlyRate: rate,
     daysPerWeek: days,
     message:
-      'My grandmother Meena (we call her Aaji) is 83 and has moderate Alzheimer\'s. ' +
+      'My grandmother Meena (we call her Aaji) is 83 and has Alzheimer\'s. ' +
       'She needs someone patient who speaks Marathi. Mornings are her best time.',
     status: 'pending',
     createdAt: now - 2 * HOUR,

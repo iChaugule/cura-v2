@@ -117,6 +117,37 @@ export interface PaymentRecord {
 
 // ── Care record ─────────────────────────────────────────────
 
+export type ScheduleKind = 'medication' | 'meal' | 'activity' | 'appointment' | 'other';
+
+/** One thing that should happen: a medicine, a meal, a walk, an appointment. */
+export interface ScheduleItem {
+  id: string;
+  title: string;
+  kind: ScheduleKind;
+  /** 24-hour "HH:MM". */
+  time: string;
+  /** Days of the week it repeats on, 0 = Sunday. Empty means every day. */
+  days: number[];
+  /** A one-off date (YYYY-MM-DD). When set, `days` is ignored. */
+  date?: string;
+  /** Dose, instructions, address... */
+  detail: string;
+  createdById: string;
+  createdByName: string;
+  createdAt: number;
+}
+
+/** "Done" for one item on one date. The id is deterministic so two people cannot double-log. */
+export interface ScheduleLog {
+  id: string;
+  itemId: string;
+  /** Local date, YYYY-MM-DD. */
+  date: string;
+  doneById: string;
+  doneByName: string;
+  doneAt: number;
+}
+
 export interface CareNote {
   id: string;
   authorId: string;
