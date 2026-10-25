@@ -84,10 +84,15 @@ create table if not exists public.entries (
   id text primary key,
   circle_id uuid not null references public.circles (id) on delete cascade,
   author_id uuid not null references public.profiles (id) on delete cascade,
-  kind text not null check (kind in ('note', 'comment', 'quiz', 'message')),
+  kind text not null check (kind in ('note', 'comment', 'quiz', 'message', 'schedule', 'dose')),
   data jsonb not null,
   created_at timestamptz not null default now()
 );
+
+-- Databases created before the schedule existed: widen the allowed kinds.
+alter table public.entries drop constraint if exists entries_kind_check;
+alter table public.entries add constraint entries_kind_check
+  check (kind in ('note', 'comment', 'quiz', 'message', 'schedule', 'dose'));
 
 create index if not exists entries_circle_idx on public.entries (circle_id, created_at desc);
 create index if not exists invites_caregiver_idx on public.invites (caregiver_id);
@@ -182,10 +187,12 @@ create policy "entries create" on public.entries for insert to authenticated
   with check (author_id = auth.uid() and public.is_member(circle_id));
 drop policy if exists "entries update own" on public.entries;
 create policy "entries update own" on public.entries for update to authenticated
-  using (author_id = auth.uid()) with check (author_id = auth.uid());
+  using (author_id = auth.uid() or (kind in ('schedule', 'dose') and public.is_member(circle_id)))
+  with check (public.is_member(circle_id));
 drop policy if exists "entries delete own" on public.entries;
+-- Anyone in the circle can tick a dose off or untick it, and edit the schedule.
 create policy "entries delete own" on public.entries for delete to authenticated
-  using (author_id = auth.uid());
+  using (author_id = auth.uid() or (kind in ('schedule', 'dose') and public.is_member(circle_id)));
 
 -- ── Functions the app calls ───────────────────────────────
 
