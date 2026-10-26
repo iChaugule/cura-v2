@@ -44,8 +44,14 @@ export default function Home() {
   const city = (parts.length > 2 && /india|united states|usa|united kingdom/i.test(parts[parts.length - 1]) ? parts[parts.length - 3] : parts[parts.length - 1]) ?? '';
   const latestNote = state.notes[0];
   const caregiver = isFamily ? them : me;
-  const family = state.members.filter(m => m.role === 'family');
-  const caregivers = state.members.filter(m => m.role === 'caregiver');
+  // Live accounts list real members. Offline (and in the demo) the two accounts stand in for them.
+  const offline = state.members.length === 0;
+  const family = offline
+    ? (state.familyAccount ? [state.familyAccount] : [])
+    : state.members.filter(m => m.role === 'family');
+  const caregivers = offline
+    ? (state.caregiverAccount && activeInvite?.status === 'accepted' ? [state.caregiverAccount] : [])
+    : state.members.filter(m => m.role === 'caregiver');
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -158,7 +164,7 @@ export default function Home() {
           {state.joinCode ? (
             <>
               <Section title="Add to the circle" />
-              <Card><CircleCode code={state.joinCode} name={name} /></Card>
+              <Card><CircleCode code={state.joinCode} name={name} sample={!state.live} /></Card>
             </>
           ) : null}
         </>
@@ -237,7 +243,7 @@ export default function Home() {
           {state.joinCode ? (
             <>
               <Section title="Add to the circle" />
-              <Card><CircleCode code={state.joinCode} name={name} /></Card>
+              <Card><CircleCode code={state.joinCode} name={name} sample={!state.live} /></Card>
             </>
           ) : null}
         </>

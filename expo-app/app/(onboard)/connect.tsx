@@ -13,7 +13,7 @@ import { Colors, Spacing, Type } from '../../src/design/tokens';
 import { useApp } from '../../src/state/AppContext';
 
 export default function Connect() {
-  const { state } = useApp();
+  const { state, startDemo } = useApp();
   const name = state.pnc?.preferredName ?? 'them';
 
   return (
@@ -34,7 +34,7 @@ export default function Connect() {
         <Card style={s.card}>
           <Text style={s.cardTitle}>Invite with a join code</Text>
           {state.joinCode ? (
-            <CircleCode code={state.joinCode} name={name} />
+            <CircleCode code={state.joinCode} name={name} sample={!state.live} />
           ) : (
             <Text style={s.cardBody}>
               Join codes are created with a real Cura account. In the demo there is no circle to share.
@@ -44,6 +44,13 @@ export default function Connect() {
       </ScrollView>
       <View style={s.footer}>
         <Button label="Go to my dashboard" onPress={() => router.replace('/(tabs)')} />
+        {!state.live ? (
+          <Button
+            label="See the sample family instead"
+            variant="ghost"
+            onPress={() => { startDemo(); router.replace('/(tabs)'); }}
+          />
+        ) : null}
       </View>
     </SafeAreaView>
   );

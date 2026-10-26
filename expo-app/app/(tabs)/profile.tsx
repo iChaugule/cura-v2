@@ -406,7 +406,7 @@ export default function Profile() {
                   </View>
                 </View>
               ))}
-              {state.joinCode && state.pnc ? <CircleCode code={state.joinCode} name={state.pnc.preferredName} /> : null}
+              {state.joinCode && state.pnc ? <CircleCode code={state.joinCode} name={state.pnc.preferredName} sample={!state.live} /> : null}
             </Card>
           </>
         ) : null}

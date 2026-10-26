@@ -7,7 +7,7 @@ import { View, Text, StyleSheet, Share, Platform, Pressable } from 'react-native
 import { Colors, Radius, Spacing, Type } from '../design/tokens';
 import { Button } from './ui';
 
-export function CircleCode({ code, name }: { code: string; name: string }) {
+export function CircleCode({ code, name, sample }: { code: string; name: string; sample?: boolean }) {
   const [copied, setCopied] = useState(false);
   const message = `Join ${name}'s care circle on Cura. Open Cura, choose "Join with a circle code", and enter ${code}.`;
 
@@ -30,7 +30,7 @@ export function CircleCode({ code, name }: { code: string; name: string }) {
       <Text style={s.label}>CIRCLE CODE</Text>
       <Text style={s.code} selectable accessibilityLabel={`Circle code ${code.split('').join(' ')}`}>{code}</Text>
       <Text style={s.help}>
-        Give this to relatives or a caregiver. They choose "Join with a circle code" on the welcome screen and
+        {sample ? 'A sample code for the demo. With a live account, relatives and caregivers enter the code on the welcome screen. ' : ''}Give this to relatives or a caregiver. They choose "Join with a circle code" on the welcome screen and
         see everything you see, translated into their language.
       </Text>
       <Button label={copied ? 'Copied' : 'Share the code'} variant="secondary" onPress={share} />

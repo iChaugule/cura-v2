@@ -198,6 +198,8 @@ function reducer(state: AppState, action: Action): AppState {
         messages: seed.messages,
         schedule: seed.schedule,
         scheduleLog: seed.scheduleLog,
+        // A sample code so the demo can show where the circle code lives.
+        joinCode: 'AJ4K7Q',
         aiTurns: { family: [], caregiver: [] },
       };
     }
@@ -214,6 +216,8 @@ function reducer(state: AppState, action: Action): AppState {
         activeRole: 'family',
         familyAccount: action.account,
         pnc: action.pnc,
+        // Offline there is no server to issue a real code, so this one is for show.
+        joinCode: state.joinCode ?? Array.from({ length: 6 }, () => 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'[Math.floor(Math.random() * 31)]).join(''),
       };
 
     case 'signUpCaregiver':
